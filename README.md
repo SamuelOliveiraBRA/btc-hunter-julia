@@ -2,37 +2,29 @@
 
 [![Julia](https://img.shields.io/badge/Julia-1.10%2B-9558B2?logo=julia&logoColor=white)](https://julialang.org)
 [![Performance](https://img.shields.io/badge/Performance-OpenSSL--Acelerado-orange)](https://www.openssl.org)
+[![GPU](https://img.shields.io/badge/GPU-CUDA--Acelerado-green)](https://developer.nvidia.com/cuda-zone)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-O **BTC Key Hunter** é um motor de busca de chaves privadas de alta performance, otimizado para resolver os desafios da **Bitcoin Puzzle Collection**. Utilizando aritmética de coordenadas Jacobianas e aceleração nativa via `libcrypto`, ele alcança velocidades competitivas diretamente no seu hardware.
+O **BTC Key Hunter** é um motor de busca de chaves privadas de alta performance, otimizado para os desafios da **Bitcoin Puzzle Collection**. Agora com suporte a **Aceleração via GPU (NVIDIA/CUDA)**!
 
 ---
 
 ## 📋 Sumário
-*   [🚀 Instalação do Julia (Passo a Passo)](#-instalação-do-julia-passo-a-passo)
-*   [✅ Validação do Ambiente](#-validação-do-ambiente)
-*   [🛠️ Como Usar](#-como-usar)
+*   [🚀 Instalação](#-instalação-do-julia-passo-a-passo)
+*   [🛠️ Como Usar (Exemplos)](#-como-usar)
+*   [🎮 Aceleração por GPU](#-aceleração-por-gpu)
 *   [🏎️ Performance e Otimizações](#️-performance-e-otimizações)
-*   [📁 Estrutura do Projeto](#-estrutura-do-projeto)
+*   [⚠️ Requisitos de Driver](#-requisitos-de-driver-importante)
 
 ---
 
 ## 🚀 Instalação do Julia (Passo a Passo)
 
 ### 1. Sistema Operacional
-O Hunter roda em Windows, macOS e Linux. Recomendamos a instalação via **juliaup** (o instalador oficial moderno).
-
-*   **Windows**: Abra o Terminal/PowerShell e digite:
-    ```powershell
-    winget install julia -s msstore
-    ```
-*   **macOS / Linux**: Abra o Terminal e digite:
-    ```bash
-    curl -fsSL https://install.julialang.org | sh
-    ```
+- **Windows**: `winget install julia -s msstore`
+- **Linux/macOS**: `curl -fsSL https://install.julialang.org | sh`
 
 ### 2. Configurando o Hunter
-Após instalar o Julia, clone este repositório e inicialize as bibliotecas:
 ```bash
 git clone https://github.com/SamuelOliveiraBRA/btc-hunter-julia.git
 cd btc-hunter-julia
@@ -41,57 +33,74 @@ julia --project=. -e "using Pkg; Pkg.instantiate()"
 
 ---
 
-## ✅ Validação do Ambiente
-
-Antes de iniciar uma busca pesada, valide se as suas bibliotecas e threads estão funcionando 100%:
-
-```bash
-# Este comando verifica Threads, Bibliotecas e Crypto (libcrypto/SHA2)
-julia --project=. main.jl --validate
-```
-
-> [!TIP]
-> No macOS e Linux, a `libcrypto` (OpenSSL) já está incluída. No Windows, instalar o **Git Bash** costuma resolver todas as dependências de criptografia nativa.
-
----
-
 ## 🛠️ Como Usar
 
-O Hunter é modular e aceita diversos parâmetros. Para o melhor desempenho, use o parâmetro `-t auto`:
+O Hunter aceita diversos parâmetros para otimizar sua busca. Use sempre `-t auto` para máximo aproveitamento de threads.
 
-### Busca Sequencial (Padrão)
-Ideal para Puzzles pequenos como o **#25**:
+### Exemplos Práticos:
+
+#### 1. Busca Sequencial Simples (Puzzle #66)
 ```bash
-julia -t auto main.jl --puzzle 25
+julia -t auto main.jl --puzzle 66
 ```
 
-### Busca por Carteira Específica (Legacy)
-O motor suporta automaticamente chaves **Uncompressed** (início do desafio):
+#### 2. Definindo Porcentagem de Início (ex: Começar em 40% do Puzzle #71)
+Ótimo para dividir o trabalho entre máquinas:
 ```bash
-julia -t auto main.jl --puzzle 18
+julia -t auto main.jl --puzzle 71 --porcentagem 40
 ```
 
-### Busca Randômica (Deep Search)
-Para Puzzles maiores como o **#66**:
+#### 3. Modos de Busca específicos
+- `--modo 1`: Sequencial (Padrão)
+- `--modo 2`: Reverso (Do fim para o início)
+- `--modo 3`: Randômico (Sorteio de intervalos)
+
 ```bash
 julia -t auto main.jl --puzzle 66 --modo 3
 ```
+
+#### 4. Definindo número de CPUs manualmente
+```bash
+julia -t auto main.jl --puzzle 66 --cpus 4
+```
+
+---
+
+## 🎮 Aceleração por GPU
+
+O Hunter agora suporta placas de vídeo NVIDIA para multiplicar sua velocidade de busca.
+
+### Comando com GPU e Intensidade:
+Use o parâmetro `--gpu` ou `--gpu:N` (onde N é o nível de intensidade):
+
+```bash
+# Busca no Puzzle 71, começando em 40%, usando GPU com intensidade 7
+julia -t auto main.jl --puzzle 71 --modo 1 --porcentagem 40 --gpu:7
+```
+
+---
+
+## ⚠️ Requisitos de Driver (Importante)
+
+Para utilizar a aceleração por **GPU**, o seu sistema deve atender aos seguintes requisitos:
+
+> [!IMPORTANT]
+> **Drivers NVIDIA**: É necessário ter drivers da NVIDIA versão **525 ou superior** (compatíveis com CUDA 12).
+> Se o seu driver for antigo (ex: compatível apenas com CUDA 11.6), o programa exibirá um erro de inicialização e entrará em **Modo de Segurança (CPU)** automaticamente para não interromper a busca.
 
 ---
 
 ## 🏎️ Performance e Otimizações
 
-Injetamos diversas técnicas de baixo nível para garantir que você aproveite cada ciclo da sua CPU:
-
-*   **Aritmética Jacobiana**: Reduzimos o custo da soma de pontos elípticos evitando inversões modulares frequentes.
-*   **Montgomery Batch Normalization**: Normalizamos centenas de pontos de uma só vez (Operação O(1) amortizada).
-*   **OpenSSL Handshake**: As funções `SHA256` e `RIPEMD160` são chamadas via `ccall` diretamente da `libcrypto` nativa, eliminando o overhead do Julia puro.
-*   **Multi-Threading Inteligente**: Distribuição de carga Base58 e curvas elípticas paralela.
+*   **Aritmética Jacobiana**: Reduz o custo da soma de pontos elípticos.
+*   **Montgomery Batch Normalization**: Normaliza centenas de pontos em uma única inversão modular.
+*   **Aceleração Nativa**: SHA256 e RIPEMD160 via `libcrypto` (OpenSSL).
+*   **GPU Kernels**: Implementação customizada para cálculos de 256-bits em hardware de vídeo.
 
 ---
 
 ## ⚠️ Atenção
-A busca por chaves privadas é um processo estatístico. Este software é fornecido "como está". Sempre faça backup de suas descobertas localizadas em `outputs/encontradas.txt`.
+Sempre faça backup de suas descobertas localizadas em `outputs/encontradas.txt`.
 
 ---
 Desenvolvido por [SamuelOliveiraBRA](https://github.com/SamuelOliveiraBRA). Se este projeto te ajudou, deixe uma ⭐!
