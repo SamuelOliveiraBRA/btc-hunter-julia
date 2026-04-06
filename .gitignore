@@ -1,0 +1,20 @@
+# Ignorar arquivos temporários do macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Ignorar pastas de ambiente do Julia
+.Conda/
+.Julia/
+.pylintrc
+Manifest.toml
+
+# PROTEÇÃO: Ignorar resultados da busca (chaves encontradas)
+outputs/
+encontradas.txt
+found.txt
+
+# Ignorar logs e arquivos de teste
+*.log
+test_output.txt
+verify_*.jl
