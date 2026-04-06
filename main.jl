@@ -28,13 +28,13 @@ const BOLD = "\e[1m"; const UL = "\e[4m"
 
 # ── Config ────────────────────────────────────────────────
 mutable struct Config
-    cpus::Int; internet::Bool; gpu::Bool
+    cpus::Int; internet::Bool; gpu::Bool; gpu_intensity::Int
     wallet_num::Int; wallet_addr::String
     wallet_status::Int
     interval_min::String; interval_max::String
     saldo::String; mode::Int; running::Bool
 end
-const CFG = Config(Sys.CPU_THREADS, false, false, 0, "", 0, "0x0", "0x0", "", 0, true)
+const CFG = Config(Sys.CPU_THREADS, false, false, 1, 0, "", 0, "0x0", "0x0", "", 0, true)
 
 # ── Utilitários ───────────────────────────────────────────
 ansi(s) = replace(s, r"\e\[[0-9;]*m" => "")   # remove ANSI para medir tamanho
@@ -608,8 +608,18 @@ function main()
                 else; modo_id = 3
                 end
                 i += 2
-            elseif ARGS[i] == "--gpu"
+            elseif startswith(ARGS[i], "--gpu")
                 CFG.gpu = true
+                if contains(ARGS[i], ":")
+                    parts = split(ARGS[i], ":")
+                    if length(parts) == 2
+                        val = tryparse(Int, parts[2])
+                        if val !== nothing
+                             CFG.gpu_intensity = val
+                             println("$(G)● GPU Intensidade: $val$(X)")
+                        end
+                    end
+                end
                 i += 1
             elseif ARGS[i] == "--cpus"
                 cpu_val = parse(Int, ARGS[i+1])
@@ -654,6 +664,14 @@ function main()
             println("CPUs   : $cpu_val")
             println("Início : $(pct > 0 ? "$pct %" : "Padrão")")
             println("$(DIM)─────────────────────────────────────────────$(X)")
+
+            if CFG.gpu && !(try CUDA.functional() catch; false end)
+                println("$(R)⚠ GPU solicitada mas não funcional (verifique drivers).$(X)")
+                println("$(DIM)Dica: O Julia exige drivers NVIDIA 525+ (CUDA 12).$(X)")
+                println("$(DIM)Prosseguindo em modo CPU...$(X)\n")
+                CFG.gpu = false
+                sleep(2)
+            end
             
             scan_dashboard(CFG.wallet_addr, r_min, r_max, modo_id, start_key)
             exit(0)
