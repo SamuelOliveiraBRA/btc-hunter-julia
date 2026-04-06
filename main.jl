@@ -11,6 +11,14 @@ include("src/SecpOptimized.jl")
 using .SecpOptimized
 using HTTP, JSON, Random, Dates, Printf
 using Base.Threads: @spawn, Atomic, atomic_add!
+try 
+    using CUDA
+catch
+    # CUDA não disponível
+end
+include("src/GpuCrypto.jl")
+include("src/scanner/GpuScanner.jl")
+using .GpuCrypto, .GpuScanner
 
 # ── Cores ANSI ────────────────────────────────────────────
 const G  = "\e[32m";  const R  = "\e[31m";  const B  = "\e[94m"
@@ -20,13 +28,13 @@ const BOLD = "\e[1m"; const UL = "\e[4m"
 
 # ── Config ────────────────────────────────────────────────
 mutable struct Config
-    cpus::Int; internet::Bool
+    cpus::Int; internet::Bool; gpu::Bool
     wallet_num::Int; wallet_addr::String
     wallet_status::Int
     interval_min::String; interval_max::String
     saldo::String; mode::Int; running::Bool
 end
-const CFG = Config(Sys.CPU_THREADS, false, 0, "", 0, "0x0", "0x0", "", 0, true)
+const CFG = Config(Sys.CPU_THREADS, false, false, 0, "", 0, "0x0", "0x0", "", 0, true)
 
 # ── Utilitários ───────────────────────────────────────────
 ansi(s) = replace(s, r"\e\[[0-9;]*m" => "")   # remove ANSI para medir tamanho
@@ -297,7 +305,8 @@ function scan_dashboard(target_addr, rng_min, rng_max, mode, start_key::BigInt=r
     function print_fixed_header()
         clear(); hide_cursor()
         println(box_top("$(BOLD)$(W) BTC KEY HUNTER  ·  Julia Edition $(X)"))
-        println(box_split("$(Y)Modo$(X)  $mode_name", "$(W)CPUs$(X)  $(G)$(CFG.cpus) threads$(X)"))
+        cpu_str = CFG.gpu ? "$(G)GPU + $(CFG.cpus) threads$(X)" : "$(G)$(CFG.cpus) threads$(X)"
+        println(box_split("$(Y)Modo$(X)  $mode_name", "$(W)Hardware$(X)  $cpu_str"))
         println(box_sep())
         println(box_line("$(W)🎯 Alvo$(X)   $(Y)$(target_addr)$(X)"))
         println(box_split(
@@ -599,6 +608,9 @@ function main()
                 else; modo_id = 3
                 end
                 i += 2
+            elseif ARGS[i] == "--gpu"
+                CFG.gpu = true
+                i += 1
             elseif ARGS[i] == "--cpus"
                 cpu_val = parse(Int, ARGS[i+1])
                 i += 2
