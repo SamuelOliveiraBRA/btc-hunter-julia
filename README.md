@@ -1,155 +1,145 @@
-# 🚀 BTC Key Hunter (Julia Edition) v2.2.0
+# 🚀 BTC Key Hunter (Julia Edition) v2.3.0
 
 [![Julia](https://img.shields.io/badge/Julia-1.10%2B-9558B2?logo=julia&logoColor=white)](https://julialang.org)
 [![Performance](https://img.shields.io/badge/Performance-Montgomery--Acelerado-orange)](#-motores-de-busca)
 [![GPU](https://img.shields.io/badge/GPU-CUDA--Acelerado-green)](https://developer.nvidia.com/cuda-zone)
 
-O **BTC Key Hunter** é um ecossistema de busca de chaves privadas Bitcoin de altíssima performance, desenvolvido para resolver a **Bitcoin Puzzle Collection**. Desenvolvido inteiramente em Julia, o sistema utiliza algoritmos matemáticos avançados de baixo nível para maximizar a taxa de chaves testadas por segundo (Keys per Second - KPS).
+O **BTC Key Hunter** é um ecossistema de busca de chaves privadas Bitcoin de altíssima performance, desenvolvido para resolver a **Bitcoin Puzzle Collection**. Desenvolvido inteiramente em Julia, o sistema utiliza algoritmos matemáticos avançados para maximizar a taxa de chaves testadas por segundo.
 
 ---
 
 ## 📋 Sumário
-- [📦 Instalação](#-instalação)
+- [📦 Guia de Instalação Passo a Passo](#-guia-de-instalação-passo-a-passo)
 - [🧩 O que são os Bitcoin Puzzles?](#-o-que-são-os-bitcoin-puzzles)
-- [⚙️ Motores de Busca](#️-motores-de-busca)
-- [🛠️ Guia Detalhado de Comandos (CLI)](#️-guia-detalhado-de-comandos-cli)
-- [🖥️ Modo Interativo (Menu)](#️-modo-interativo-menu)
-- [💡 Exemplos Práticos de Uso](#-exemplos-práticos-de-uso)
-- [🎯 Estratégias para o Puzzle #71](#-estratégias-para-o-puzzle-71)
+- [⚙️ Motores de Busca: O Coração do Sistema](#️-motores-de-busca-o-coração-do-sistema)
+- [🛠️ Dicionário de Parâmetros (Linha por Linha)](#️-dicionário-de-parâmetros-linha-por-linha)
+- [💡 Galeria de Exemplos Ultra-Detalhados](#-galeria-de-exemplos-ultra-detalhados)
+- [🖥️ Manual do Modo Interativo (Menu)](#️-manual-do-modo-interativo-menu)
 - [🏎️ Otimizações Técnicas](#️-otimizações-técnicas)
+- [🆘 Solução de Problemas (Troubleshooting)](#-solução-de-problemas-troubleshooting)
 
 ---
 
-## 📦 Instalação
+## 📦 Guia de Instalação Passo a Passo
 
-### 1. Windows (A maneira mais rápida)
-Se você usa Windows 10 ou 11, pode instalar tudo via terminal (PowerShell) em segundos:
-```bash
-# Instalar o Julia via Winget
-winget install Julia.Julia
-
-# Reinicie o terminal e clone o projeto
-git clone https://github.com/SamuelOliveiraBRA/btc-hunter-julia.git
-cd btc-hunter-julia
-
-# Instalar dependências (dentro da pasta do projeto)
-julia --project=. -e "using Pkg; Pkg.instantiate()"
-```
-
-### 2. macOS / Linux
-Utilize o gerenciador de pacotes ou download manual:
-```bash
-# macOS (Homebrew)
-brew install --cask julia
-
-# Linux/macOS Clone & Setup
-git clone https://github.com/SamuelOliveiraBRA/btc-hunter-julia.git
-cd btc-hunter-julia
-julia --project=. -e "using Pkg; Pkg.instantiate()"
-```
+### Windows (Via Terminal)
+A maneira mais moderna e recomendada é usar o `winget`:
+1.  Abra o PowerShell como Administrador.
+2.  `winget install Julia.Julia` → Instala a linguagem Julia.
+3.  `git clone https://github.com/SamuelOliveiraBRA/btc-hunter-julia.git` → Baixa o projeto.
+4.  `cd btc-hunter-julia` → Entra na pasta.
+5.  `julia --project=. -e "using Pkg; Pkg.instantiate()"` → Instala todas as bibliotecas necessárias automaticamente.
 
 ---
 
 ## 🧩 O que são os Bitcoin Puzzles?
 
-A **Bitcoin Puzzle Collection** foi iniciada em 2015 por um anônimo que enviou quantidades crescentes de Bitcoin para endereços cujas chaves privadas seguem um padrão específico de bits.
-
-*   **O Padrão**: As chaves privadas são numeradas. O Puzzle #1 tem uma chave de 1 bit, o #2 de 2 bits, e assim por diante.
-*   **O Desafio**: A cada novo nível, o "espaço de busca" dobra. O Puzzle #66, por exemplo, tem um prêmio de 6.6 BTC e requer encontrar uma chave entre `0x2000...` e `0x3fff...`.
-*   **Por que o Julia?**: A busca por força bruta exige trilhões de cálculos de curva elíptica (`secp256k1`). O Julia nos permite chegar perto da performance do C++ com a facilidade de prototipagem do Python.
-
----
-
-## ⚙️ Motores de Busca
-
-Este software inclui múltiplos "motores", cada um com uma filosofia de busca:
-
-### 1. BitCrack Engine (`bitcrack`) ⚡
-O motor de "corrida". Ele ignora complexidades e foca em gerar pontos da curva elíptica o mais rápido possível.
-*   **Ideal para**: Deixar o computador ligado por dias em um único puzzle grande.
-*   **Nota**: Suporta aceleração total via GPU.
-
-### 2. SecpOptimized / KeyHunter (`secp`) 🛠️
-Baseado na implementação do famoso software `KeyHunter`, mas refatorado para Julia.
-*   **Ideal para**: Usuários que buscam estabilidade e querem testar múltiplos endereços (multi-target) simultaneamente.
-*   **Vantagem**: Menor uso de memória que o BSGS.
-
-### 3. BSGS Engine (`bsgs`) 🧠
-Utiliza o algoritmo **Baby-Step Giant-Step**. 
-*   **Como funciona**: Ele pré-calcula uma tabela na memória RAM para encontrar colisões. 
-*   **Vantagem**: Pode ser drasticamente mais rápido para cobrir fatias pequenas de range.
-*   **Desvantagem**: Se você tiver pouca RAM, o sistema pode travar.
+Em 2015, um usuário anônimo enviou Bitcoins para diversos endereços com um padrão matemático:
+*   **Puzzle #1**: A chave privada está entre 1 e 1 (1 bit).
+*   **Puzzle #66**: A chave está num range de $2^{65}$ a $2^{66}-1$.
+*   **A Caçada**: O objetivo é varrer esse intervalo específico (Range) para encontrar a chave privada que assina o endereço alvo e permite o saque.
 
 ---
 
-## 🛠️ Guia Detalhado de Comandos (CLI)
+## ⚙️ Motores de Busca: O Coração do Sistema
 
-Use o comando `julia --threads auto main.jl` seguido de:
+O software possui três "cérebros" (motores) diferentes:
 
-| Comando | Descrição Técnica | Por que usar? |
-| :--- | :--- | :--- |
-| `--puzzle N` | Define o ID do puzzle da lista oficial (1-160). | Para carregar automaticamente o intervalo de busca e o endereço alvo. |
-| `--modo 1` | **Sequencial**: Começa do início do range (`min`) e vai subindo. | Melhor para varreduras organizadas e uso de checkpoints. |
-| `--modo 2` | **Reverso**: Começa do final do range (`max`) e vai descendo. | Estratégia comum quando se acredita que a chave está no final do bit. |
-| `--modo 3` | **Aleatório**: Sorteia números dentro do intervalo. | Útil para "sorte" ou quando o range sequencial já foi muito explorado. |
-| `--porcentagem P` | Pula direto para uma posição relativa (ex: `50.0`). | Essencial para dividir o trabalho entre vários computadores. |
-| `--batch N` | Quantidade de chaves testadas antes de atualizar a tela. | Valores maiores (1024, 2048) aumentam o KPS, mas diminuem a fluidez da UI. |
-| `--gpu` | Ativa o motor CUDA para placas NVIDIA. | Aumenta o desempenho em até 50x comparado a uma CPU comum. |
-| `--ambos-formatos` | Testa chaves comprimidas e não-comprimidas. | Alguns puzzles antigos podem usar o formato não-comprimido. |
+1.  **BitCrack Engine (`bitcrack`)**: Focado em velocidade extrema. Ideal para quem usa GPU.
+2.  **SecpOptimized / Julia (`secp`)**: Versão estável baseada na lógica do KeyHunter original. Melhor para buscas simultâneas em vários endereços.
+3.  **BSGS Engine (`bsgs`)**: Usa muita memória RAM para "pular" etapas. Muito rápido em fatias pequenas.
 
 ---
 
-## 🖥️ Modo Interativo (Menu)
+## 🛠️ Dicionário de Parâmetros (Linha por Linha)
 
-Se você apenas digitar `julia main.jl`, o sistema abrirá um **Wizard de Configuração**:
+Quando você digita um comando, cada parte tem uma função vital:
 
-1.  **Dashboard**: Mostra o status atual das CPUs e se a internet está ativa.
-2.  **Consulta de Saldo**: Se a internet estiver ativa, o sistema checa o valor em BTC do endereço antes de começar.
-3.  **Gerenciador de Checkpoint**: Se você fechar o programa, ele pergunta: *"Deseja retomar do ponto X?"*. Isso evita perder horas de processamento.
+*   `julia`: Chama a linguagem de programação.
+*   `--threads auto`: Diz ao Julia para usar todos os núcleos (Logical Cores) do seu processador.
+*   `main.jl`: O arquivo principal que orquestra toda a busca.
+*   `--puzzle 66`: Diz ao sistema qual puzzle você quer atacar (1 a 160).
+*   `--modo 1`: Define o comportamento: `1` (Sequencial), `2` (Reverso), `3` (Aleatório).
+*   `--motor bitcrack`: Escolhe qual dos três motores explicados acima será usado.
+*   `--porcentagem 50`: Define o ponto de partida relativo ao tamanho do range. `50` significa começar exatamente do meio.
+*   `--cpus 4`: Limita a busca a apenas 4 núcleos do seu processador.
+*   `--gpu:8`: Ativa a placa de vídeo. O número `:8` define a intensidade do kernel (quanto maior, mais KPS, mas o PC pode ficar lento para outras tarefas).
+*   `--batch 1024`: Define quantas chaves cada CPU/Thread processa por vez antes de reportar progresso. No Windows/Mac, `1024` ou `2048` costumam ser ideais.
 
 ---
 
-## 💡 Exemplos Práticos de Uso
+## 💡 Galeria de Exemplos Ultra-Detalhados
 
-### Cenário A: "Quero máxima velocidade na minha GPU"
-Para buscar o Puzzle 66 usando sua placa de vídeo:
+### 🟢 Exemplo 1: Uso Somente com Porcentagem
+*Ideal para dividir o trabalho entre computadores.*
 ```bash
-julia --threads auto main.jl --puzzle 66 --motor bitcrack --gpu:8
+julia --threads auto main.jl --puzzle 71 --modo 1 --porcentagem 25.5
 ```
-
-### Cenário B: "Vou dividir o range 71 com um amigo"
-Você começa do 0% e seu amigo começa do 50%:
-*   **Você**: `julia --threads auto main.jl --puzzle 71 --modo 1 --porcentagem 0`
-*   **Amigo**: `julia --threads auto main.jl --puzzle 71 --modo 1 --porcentagem 50`
-
-### Cenário C: "Modo Econômico" (Fundo enquanto trabalha)
-Usa apenas 2 núcleos da CPU para não travar o PC:
-```bash
-julia --threads auto main.jl --puzzle 66 --cpus 2 --batch 256
-```
+**O que este comando faz linha por linha:**
+1. `julia --threads auto`: Inicia o sistema com força máxima de CPU.
+2. `main.jl --puzzle 71`: Foca no Puzzle #71.
+3. `--modo 1`: Configura para busca Sequencial (do menor para o maior).
+4. `--porcentagem 25.5`: Calcula exatamente 25.5% do range total e começa a busca a partir daí.
 
 ---
 
-## 🎯 Estratégias para o Puzzle #71
+### 🔵 Exemplo 2: Alternando Modos de Busca
+*Comparativo entre Sequencial e Aleatório.*
+```bash
+# Modo Reverso (Do fim para o início)
+julia --threads auto main.jl --puzzle 66 --modo 2
 
-O Puzzle 71 é massivo ($2^{70}$ a $2^{71}$). Algumas dicas:
-1.  **Mantenha o Checkpoint Ativo**: Nunca rode sem ele. Se o PC reiniciar, você continua de onde parou.
-2.  **Batch Size**: No 71, use `--batch 2048`. Como o range é enorme, você quer o máximo de eficiência bruta.
-3.  **Foco em BitCrack**: Para este nível de dificuldade, o motor BitCrack é o que apresenta as melhores métricas de KPS.
+# Modo Aleatório (Sorteando chaves)
+julia --threads auto main.jl --puzzle 66 --modo 3
+```
+**O que acontece:**
+* No `--modo 2`, o sistema carrega o valor máximo do Puzzle 66 e vai subtraindo 1 a cada tentativa.
+* No `--modo 3`, o sistema pula para partes aleatórias do range. Excelente se o sequencial já foi muito explorado pela comunidade.
+
+---
+
+### 🔴 Exemplo 3: Aceleração via GPU
+*O "Turbo" do sistema.*
+```bash
+julia --threads auto main.jl --puzzle 67 --motor bitcrack --gpu:12
+```
+**O que este comando faz linha por linha:**
+1. `--motor bitcrack`: Seleciona o motor mais rápido para kernels de vídeo.
+2. `--gpu:12`: Inicializa a placa de vídeo NVIDIA com intensidade 12.
+3. O sistema usará os núcleos CUDA para calcular as chaves em paralelo, atingindo milhões de KPS.
+
+---
+
+### 🟡 Exemplo 4: Escolha de Motor (Julia vs BitCrack)
+*Diferença entre motores.*
+```bash
+# Motor Julia (Antigo/Estável)
+julia --threads auto main.jl --puzzle 66 --motor secp
+
+# Motor BitCrack (Novo/Rápido)
+julia --threads auto main.jl --puzzle 66 --motor bitcrack
+```
+**Explicação Detalhada:**
+* O `--motor secp` usa a biblioteca `SecpOptimized` em Julia puro. É ótimo para quem tem CPUs Intel/AMD modernas.
+* O `--motor bitcrack` usa campos finitos e aritmética jacobiana agressiva. Se você quer velocidade bruta, este é o comando.
 
 ---
 
 ## 🏎️ Otimizações Técnicas
 
-Este projeto implementa o estado da técnica em criptografia:
-*   **Montgomery Batch Inversion**: Uma técnica que transforma centenas de divisões modulares pesadas em uma única inversão e algumas multiplicações rápidas.
-*   **Zero-Allocation Loops**: O código foi escrito para que o Julia não precise acionar o *Garbage Collector*, mantendo a velocidade constante.
-*   **Aceleração de Kernel**: Os cálculos de GPU são feitos em kernels otimizados que conversam diretamente com o hardware.
+*   **Montgomery Batch Inversion**: Economiza 99% do processamento em divisões modulares.
+*   **Jacobian Coordinates**: Transforma geometria plana em espacial para acelerar a curva elíptica.
+*   **Checkpoint Automático**: Se você digitar `Ctrl+C` ou a energia cair, o sistema salva o progresso e permite retomar no mesmo comando depois.
 
 ---
 
-> [!CAUTION]
-> **Aviso de Aquecimento**: O uso intensivo de CPU/GPU por longos períodos pode gerar calor. Certifique-se de que seu sistema de refrigeração está funcionando corretamente.
+## 🆘 Solução de Problemas (Troubleshooting)
+
+| Erro | Solução |
+| :--- | :--- |
+| `julia as a command not found` | Julia não foi instalado ou não está no PATH. Use o instalador winget. |
+| `CUDA not available` | Seus drivers da NVIDIA precisam de atualização ou você não tem placa compatível. |
+| `Out of memory` | Você tentou usar o `--motor bsgs` com um range muito grande ou pouca RAM. Use `--motor bitcrack`. |
 
 ---
 Desenvolvido por [SamuelOliveiraBRA](https://github.com/SamuelOliveiraBRA) 🚀
