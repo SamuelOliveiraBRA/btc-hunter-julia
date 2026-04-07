@@ -5,13 +5,13 @@ using Secp256k1
 include("SecpOptimized.jl")
 using .SecpOptimized
 
-export hash160, sha256, ripemd160, priv_to_pub_compressed, hex_to_bytes, bytes_to_hex, base58_to_hash160, serialize_compressed_batch, serialize_uncompressed_batch
+export hash160, sha256, ripemd160, priv_to_pub_compressed, hex_to_bytes, bytes_to_hex, base58_to_hash160, serialize_compressed_batch, serialize_uncompressed_batch, hash160_compressed_fast, hash160_uncompressed_fast
 
 """
     sha256(data::Vector{UInt8})
 Usa libcrypto (OpenSSL) para máxima performance.
 """
-function sha256(data::Vector{UInt8})::Vector{UInt8}
+function sha256(data::AbstractVector{UInt8})::Vector{UInt8}
     out = zeros(UInt8, 32)
     ccall((:SHA256, "libcrypto"), Ptr{UInt8}, (Ptr{UInt8}, Csize_t, Ptr{UInt8}), data, length(data), out)
     return out
@@ -22,7 +22,7 @@ end
 Implementação via libcrypto (OpenSSL/LibreSSL) presente no macOS e Linux.
 Muito mais rápido que implementações puras.
 """
-function ripemd160(data::Vector{UInt8})::Vector{UInt8}
+function ripemd160(data::AbstractVector{UInt8})::Vector{UInt8}
     out = zeros(UInt8, 20)
     # No macOS, libcrypto está disponível globalmente
     ccall((:RIPEMD160, "libcrypto"), Ptr{UInt8}, (Ptr{UInt8}, Csize_t, Ptr{UInt8}), data, length(data), out)
@@ -33,7 +33,7 @@ end
     hash160(data::Vector{UInt8})
 Cálculo padrão Bitcoin: RIPEMD160(SHA256(data))
 """
-function hash160(data::Vector{UInt8})::Vector{UInt8}
+function hash160(data::AbstractVector{UInt8})::Vector{UInt8}
     return ripemd160(sha256(data))
 end
 
@@ -155,6 +155,42 @@ end
 
 function bytes_to_hex(bytes::Vector{UInt8})::String
     return bytes2hex(bytes)
+end
+
+function hash160_compressed_fast(prefix::UInt8, x_bytes::Vector{UInt8})::Vector{UInt8}
+    pub = Vector{UInt8}(undef, 33)
+    pub[1] = prefix
+    @inbounds for j in 1:32
+        pub[j+1] = x_bytes[j]
+    end
+    return hash160(pub)
+end
+
+"""
+    big_to_32bytes!(n::BigInt, buf::Vector{UInt8}, offset::Int)
+Converte um BigInt para 32 bytes (big-endian) diretamente no buffer.
+"""
+function big_to_32bytes!(n::BigInt, buf::Vector{UInt8}, offset::Int)
+    tn = n
+    for j in 31:-1:0
+        @inbounds buf[offset + j] = UInt8(tn & 0xFF)
+        tn >>= 8
+    end
+end
+
+"""
+    hash160_uncompressed_fast(x_bytes::Vector{UInt8}, y_bytes::Vector{UInt8})
+Versão otimizada para o BitCrackEngine: recebe as coordenadas X e Y (32 bytes cada),
+monta a chave pública não-comprimida (0x04 + X + Y) e calcula o Hash160.
+"""
+function hash160_uncompressed_fast(x_bytes::Vector{UInt8}, y_bytes::Vector{UInt8})::Vector{UInt8}
+    pub = Vector{UInt8}(undef, 65)
+    pub[1] = 0x04
+    for j in 1:32
+        @inbounds pub[j+1] = x_bytes[j]
+        @inbounds pub[j+33] = y_bytes[j]
+    end
+    return hash160(pub)
 end
 
 end # module
