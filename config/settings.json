@@ -1,0 +1,19 @@
+{
+    "cpus": 4,
+    "internet": true,
+    "gpu": false,
+    "gpu_intensity": 1,
+    "wallet_num": 71,
+    "wallet_addr": "1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU",
+    "wallet_status": 0,
+    "interval_min": "0x400000000000000000",
+    "interval_max": "0x7fffffffffffffffff",
+    "saldo": "0.00000000",
+    "mode": 0,
+    "running": true,
+    "batch_size": 512,
+    "both_formats": false,
+    "use_checkpoint": true,
+    "checkpoint_interval": 30,
+    "engine": "bitcrack"
+}

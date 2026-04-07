@@ -14,6 +14,7 @@ using ..FastField
 using ..FastSecp
 using ..BtcCrypto
 using ..SecpOptimized
+using ..MultiTarget
 
 export BitCrackState, init_engine, next_batch!, check_batch
 
@@ -34,38 +35,23 @@ Estado do motor BitCrack para um worker.
 struct BitCrackState
     points      :: Vector{PointJ}
     stride_J    :: PointJ
-    target_hash :: Vector{UInt8}
+    targets     :: TargetSet # Múltiplos alvos (Bloom + Hash)
     batch_size  :: Int
     both_formats :: Bool
-    pub_buf     :: Vector{UInt8} # Buffer para serialização (C=33, U=65)
+    pub_buf     :: Vector{UInt8} 
 end
 
-# ── Inicializar o motor ───────────────────────────────────
-"""
-    init_engine(start_key, target_hash, batch_size, stride_size, both_formats)
-Inicializa o motor BitCrack a partir de uma chave privada de início.
-Gera o lote inicial: P[i] = (start_key + i) * G via adição incremental.
-"""
-function init_engine(start_key::BigInt, target_hash::Vector{UInt8}, batch_size::Int, stride_size::Int, both_formats::Bool=false)::BitCrackState
+function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, stride_size::Int, both_formats::Bool=false)::BitCrackState
     points = Vector{PointJ}(undef, batch_size)
-
-    # Ponto base: start_key * G (usa SecpOptimized para bootstrap)
     base_p = _big_to_pointJ(start_key)
-
-    # Gerar lote: P[i] = P[i-1] + G
     curr = base_p
     for i in 1:batch_size
         points[i] = curr
         curr = point_add_jacobian(curr, G_J_fast)
     end
-
-    # Stride = stride_size * G (avança o salto total das threads de uma vez)
     stride_J = _big_to_pointJ(BigInt(stride_size))
-
-    # Buffer reservado para serialização (33 bytes para C, 65 bytes para U)
     pub_buf = Vector{UInt8}(undef, 65)
-
-    return BitCrackState(points, stride_J, target_hash, batch_size, both_formats, pub_buf)
+    return BitCrackState(points, stride_J, targets, batch_size, both_formats, pub_buf)
 end
 
 # ── Avançar o lote ────────────────────────────────────────
@@ -82,12 +68,12 @@ end
 
 # ── Verificar lote (batch inversion) ─────────────────────
 """
-    check_batch(state) → Int
+    check_batch(state) → Tuple{Int, Vector{UInt8}}
 Verifica todos os pontos do lote usando uma única inversão modular
 (algoritmo de Montgomery). Retorna o índice relativo no lote (1-based)
-se encontrar a chave, ou 0 se não encontrar.
+e o hash160 encontrado, ou (0, UInt8[]) se não encontrar.
 """
-function check_batch(state::BitCrackState)::Int
+function check_batch(state::BitCrackState)::Tuple{Int, Vector{UInt8}}
     n  = state.batch_size
     zs = [p.z for p in state.points]
 
@@ -125,7 +111,7 @@ function check_batch(state::BitCrackState)::Int
         state.pub_buf[1] = iseven(to_big(ay)) ? 0x02 : 0x03
         
         h_c = BtcCrypto.hash160(view(state.pub_buf, 1:33))
-        h_c == state.target_hash && return i
+        check_hit(state.targets, h_c) && return (i, h_c)
 
         # 2. Não-comprimido (U) - Opcional
         if state.both_formats
@@ -135,11 +121,11 @@ function check_batch(state::BitCrackState)::Int
             BtcCrypto.big_to_32bytes!(to_big(ay), state.pub_buf, 34)
             
             h_u = BtcCrypto.hash160(view(state.pub_buf, 1:65))
-            h_u == state.target_hash && return i
+            check_hit(state.targets, h_u) && return (i, h_u)
         end
     end
 
-    return 0
+    return (0, UInt8[])
 end
 
 # ── Helpers internos ──────────────────────────────────────

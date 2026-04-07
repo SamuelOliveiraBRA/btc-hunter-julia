@@ -1,4 +1,4 @@
-# 🚀 BTC Key Hunter (Julia Edition) - O Manual Mestre v2.5.0
+# 🚀 BTC Key Hunter (Julia Edition) - O Manual Mestre v1.5.0
 
 [![Julia](https://img.shields.io/badge/Julia-1.10%2B-9558B2?logo=julia&logoColor=white)](https://julialang.org)
 [![Performance](https://img.shields.io/badge/Performance-Montgomery--Acelerado-orange)](#-motores-de-busca)
@@ -9,15 +9,32 @@ Este é o manual definitivo para o **BTC Key Hunter**, um ecossistema de busca d
 ---
 
 ## 📋 Sumário
-1.  [🧩 O que são os Bitcoin Puzzles?](#-o-que-são-os-bitcoin-puzzles)
-2.  [📦 Guia de Instalação (Windows, Mac, Linux)](#-guia-de-instalação-windows-mac-linux)
-3.  [🧠 A Anatomia do Comando (Explicação Linha por Linha)](#-a-anatomia-do-comando-explicação-linha-por-linha)
-4.  [⚙️ Motores de Busca: BitCrack vs Julia vs BSGS](#️-motores-de-busca-bitcrack-vs-julia-vs-bsgs)
-5.  [💡 Enciclopédia de Exemplos Práticos](#-enciclopédia-de-exemplos-práticos)
-6.  [🖥️ Manual do Modo Interativo (Menu)](#️-manual-do-modo-interativo-menu)
-7.  [🛡️ Segurança e Checkpoints](#️-segurança-e-checkpoints)
-8.  [🏎️ Otimizações Técnicas Avançadas](#️-otimizações-técnicas-avançadas)
-9.  [🆘 Solução de Problemas](#-solução-de-problemas)
+1.  [🌟 Novidades da Versão 1.5.0](#-novidades-da-versão-150)
+2.  [🧩 O que são os Bitcoin Puzzles?](#-o-que-são-os-bitcoin-puzzles)
+3.  [📦 Guia de Instalação (Windows, Mac, Linux)](#-guia-de-instalação-windows-mac-linux)
+4.  [🧠 A Anatomia do Comando (Explicação Linha por Linha)](#-a-anatomia-do-comando-explicação-linha-por-linha)
+5.  [⚙️ Motores de Busca: BitCrack vs Julia vs BSGS](#️-motores-de-busca-bitcrack-vs-julia-vs-bsgs)
+6.  [💡 Enciclopédia de Exemplos Práticos](#-enciclopédia-de-exemplos-práticos)
+7.  [🖥️ Manual do Modo Interativo (Menu)](#️-manual-do-modo-interativo-menu)
+8.  [🛡️ Segurança e Checkpoints](#️-segurança-e-checkpoints)
+9.  [🏎️ Otimizações Técnicas Avançadas](#️-otimizações-técnicas-avançadas)
+10. [🆘 Solução de Problemas](#-solução-de-problemas)
+
+---
+
+## 🌟 Novidades da Versão 1.5.0
+
+A versão 1.5.0 transforma o BTC Hunter em um sistema de nível **NOC (Network Operations Center)**, focado em transparência total e UX refinada.
+
+### 💎 Dashboard Dinâmico
+*   **Interface Single-Page**: O terminal agora recarrega de forma limpa a cada navegação, eliminando poluição visual.
+*   **Dual-Bar Hardware**: Monitoramento visual em tempo real do uso de **CPUs (com contagem de threads ativo/total)** e **GPU (nível de intensidade)**.
+*   **Blocos Estruturados**: Divisores horizontais e títulos dinâmicos para Saldo, Status, Limites de Range e Performance.
+
+### 🌐 Conectividade e Inteligência
+*   **Real-Time Balance Check**: Integração nativa com a API `blockchain.info` para validar saldos antes do scan (com confirmação obrigatória do usuário).
+*   **Deep Clear Engine**: Novo sistema de limpeza de buffer que impede a duplicação de imagens em transições rápidas.
+*   **Créditos de Identidade**: Exibição fixa da versão e autoria no cabeçalho do sistema.
 
 ---
 
@@ -157,10 +174,13 @@ julia --threads auto main.jl --puzzle 66 --porcentagem 41 --fim 41
 
 ## 🖥️ Manual do Modo Interativo (Menu)
 
-Se você apenas rodar `julia main.jl`, verá o menu dinâmico:
-1.  **Configurar CPUs**: Você pode escolher usar menos núcleos se precisar trabalhar enquanto o hunter roda.
-2.  **Consulta de Saldo**: O sistema checa via API se o endereço alvo ainda tem fundos antes de gastar energia.
-3.  **Configurações Avançadas**: Permite trocar o `Batch Size` (Lote) e o formato (Comprimido/Não-comprimido).
+O modo interativo foi redesenhado para ser um assistente passo-a-passo:
+1.  **Identificação Visual**: O Logo BTC e o Dashboard de Hardware estão sempre visíveis no topo.
+2.  **Assistente de Busca (Wizard)**:
+    *   **Passo 1 (Saldo)**: Pergunta se deseja consultar a internet. Útil para validar se o puzzle não foi resolvido segundos atrás.
+    *   **Passo 2 (Varredura)**: Escolha entre Sequencial, Reverso ou Aleatório.
+    *   **Passo 3 (Range)**: Definição de range por percentual inicial/final ou hex customizado.
+3.  **Configurações de Hardware**: Ajuste dinâmico de CPUs e monitoramento de drivers CUDA sem precisar sair do programa.
 
 ---
 

@@ -3,10 +3,10 @@
 
 module BtcUtils
 
-using SHA
+using SHA, HTTP, JSON, Printf
 using ..Base58
 
-export generate_wif
+export generate_wif, get_balance
 
 const VERSION_BYTE_MAINNET = 0x80
 
@@ -30,6 +30,23 @@ function generate_wif(priv_key::BigInt; compressed::Bool=true)::String
     checksum      = _sha256d(extended)[1:4]
     final_payload = vcat(extended, checksum)
     return Base58.encode(final_payload)
+end
+
+"""
+    get_balance(address::String) -> String
+Consulta o saldo de um endereço via blockchain.info (Satoshis -> BTC).
+"""
+function get_balance(address::String)::String
+    isempty(address) && return "0.0000"
+    try
+        url = "https://blockchain.info/rawaddr/$address"
+        response = HTTP.get(url, retry=false, connect_timeout=5)
+        data = JSON.parse(String(response.body))
+        satoshis = get(data, "final_balance", 0)
+        return @sprintf("%.8f", satoshis / 1e8)
+    catch
+        return "Erro/Off"
+    end
 end
 
 end # module BtcUtils
