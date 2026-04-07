@@ -136,7 +136,22 @@ julia --threads auto main.jl --puzzle 66 --modo 2
 
 # ALEATÓRIO: Sorteio puro
 julia --threads auto main.jl --puzzle 66 --modo 3
+
+# ALEATÓRIO PARTICIONADO: Sorteia apenas entre 41% e 100%
+julia --threads auto main.jl --puzzle 71 --modo 3 --porcentagem 41
 ```
+
+---
+
+### 🍰 Exemplo de Fatiamento (Range Customizado)
+```bash
+# BUSCA EM FATIA: Procura apenas no bloco entre 41% e 42%
+julia --threads auto main.jl --puzzle 66 --porcentagem 41 --fim 42
+
+# ATALHO (+1%): O comando abaixo também busca a fatia 41% -> 42%
+julia --threads auto main.jl --puzzle 66 --porcentagem 41 --fim 41
+```
+*   **`--fim <%>`**: Define o limite superior da busca. Se for igual à `--porcentagem`, o programa assume um bloco de 1% de largura.
 
 ---
 
@@ -152,7 +167,10 @@ Se você apenas rodar `julia main.jl`, verá o menu dinâmico:
 ## 🛡️ Segurança e Checkpoints
 
 ### 💾 Checkpoint Automático
-O sistema salva seu progresso a cada 30 segundos. O arquivo fica em `outputs/checkpoint_puzzle_X.json`.
+O sistema salva seu progresso periodicamente. O arquivo fica em `outputs/checkpoint_puzzle_X.json`.
+*   **Padrão**: Salva a cada 30 segundos.
+*   **Customizado**: `julia main.jl --puzzle 66 --checkpoint 1800` (salva a cada 30 minutos).
+*   **Desativar**: `julia main.jl --puzzle 66 --checkpoint off` (melhora levemente a performance, mas sem backup).
 *   **Como retomar**: Ao abrir o programa, ele detecta o arquivo e pergunta: *"Retomar de onde parou?"* Diga sim para não perder trabalho!
 
 ### 🔑 Chaves Encontradas

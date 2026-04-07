@@ -52,6 +52,7 @@ mutable struct Config
     batch_size::Int       # Tamanho do lote por worker
     both_formats::Bool    # true = testa comprimido + não-comprimido
     use_checkpoint::Bool  # true = salva checkpoint automaticamente
+    checkpoint_interval::Int # Intervalo em segundos (v2.2)
     # v2.1: motor selecionável
     engine::Symbol        # :secp (padrão BigInt) | :bitcrack (FastField+FastSecp)
 end
@@ -59,7 +60,7 @@ end
 const CFG = Config(
     Sys.CPU_THREADS, false, false, 1,
     0, "", 0, "0x0", "0x0", "", 0, true,
-    512, false, true,  # v2.0: batch=512, só comprimido, checkpoint ativo
+    512, false, true, 30, # v2.0: batch=512, só comprimido, checkpoint ativo (v2.2: 30s)
     :secp              # v2.1: motor padrão (SecpOptimized + BigInt)
 )
 
@@ -273,7 +274,7 @@ function config_avancado()
     while true
         header("Configuração › Avançado")
         fmt_s  = CFG.both_formats ? "$(C)Comprimido + Não-comprimido$(X)" : "$(G)Apenas Comprimido$(X) $(DIM)(rápido)$(X)"
-        ckpt_s = CFG.use_checkpoint ? "$(G)Ativo$(X)" : "$(R)Desativado$(X)"
+        ckpt_s = CFG.use_checkpoint ? "$(G)Ativo ($(CFG.checkpoint_interval)s)$(X)" : "$(R)Desativado$(X)"
         eng_s  = ""
         if CFG.engine == :bitcrack; eng_s = "$(M)BitCrackEngine$(X) $(DIM)(FastField+FastSecp)$(X)"
         elseif CFG.engine == :bsgs; eng_s = "$(Y)BSGSEngine$(X) $(DIM)(Baby-Step Giant-Step RAM)$(X)"
@@ -302,9 +303,24 @@ function config_avancado()
             msg = CFG.both_formats ? "$(C)C+U ativado$(X) (mais lento)" : "$(G)Apenas Comprimido$(X) (rápido)"
             println("  ● $msg"); sleep(0.8)
         elseif op == "3"
-            CFG.use_checkpoint = !CFG.use_checkpoint
-            msg = CFG.use_checkpoint ? "$(G)Checkpoint ativado$(X)" : "$(R)Checkpoint desativado$(X)"
-            println("  ● $msg"); sleep(0.8)
+            println("  $(W)Configurar Checkpoint:$(X)")
+            println("  $(G)[1]$(X) Ativar/Mudar Intervalo")
+            println("  $(R)[2]$(X) Desativar")
+            c_op = input("  Opção: ")
+            if c_op == "1"
+                s = input("  Intervalo em segundos (mínimo 5): ")
+                v = tryparse(Int, strip(s))
+                if !isnothing(v) && v >= 5
+                    CFG.use_checkpoint = true
+                    CFG.checkpoint_interval = v
+                    println("  $(G)✓ Checkpoint configurado para $v segundos.$(X)"); sleep(1.0)
+                else
+                    println("  $(R)Valor inválido.$(X)"); sleep(0.8)
+                end
+            elseif c_op == "2"
+                CFG.use_checkpoint = false
+                println("  $(R)✗ Checkpoint desativado.$(X)"); sleep(1.0)
+            end
         elseif op == "4"
             if CFG.engine == :secp
                 CFG.engine = :bitcrack
@@ -451,10 +467,10 @@ function scan_dashboard(
         end
         println(box_split(
             "$(DIM)Min$(X)  $(C)$(CFG.interval_min)$(X)",
-            "$(DIM)Max$(X)  $(C)$(CFG.interval_max)$(X)"
+            "$(DIM)Max$(X)  $(C)0x$(string(rng_max, base=16))$(X)"
         ))
         if puzzle_id > 0 && CFG.use_checkpoint
-            println(box_line("$(DIM)Checkpoint ativo │ Puzzle #$(puzzle_id) │ salva a cada 30s$(X)"))
+            println(box_line("$(DIM)Checkpoint ativo │ Puzzle #$(puzzle_id) │ salva a cada $(CFG.checkpoint_interval)s$(X)"))
         end
         println(box_sep())
         flush(stdout)
@@ -521,9 +537,9 @@ function scan_dashboard(
             print("\033[7A")
             render_stats(speed, total_elapsed)
 
-            # Checkpoint a cada 30s (apenas seq/reverso)
+            # Checkpoint conforme intervalo definido (apenas seq/reverso)
             if CFG.use_checkpoint && puzzle_id > 0 && mode != 3
-                if (now_t - last_ckpt_t) >= 30.0
+                if (now_t - last_ckpt_t) >= Float64(CFG.checkpoint_interval)
                     try
                         CheckpointManager.save_checkpoint(
                             puzzle_id, last_key[], cur, mode, total_elapsed)
@@ -560,8 +576,8 @@ function scan_dashboard(
                     start_key - BigInt(wid - 1)
                 end
             else
-                r_safe = safe_rng_max > rng_min ? safe_rng_max : rng_max
-                BigInt(rand(rng_min:r_safe))
+                r_safe = safe_rng_max > start_key ? safe_rng_max : rng_max
+                BigInt(rand(start_key:r_safe))
             end
 
             if CFG.engine == :bitcrack
@@ -590,8 +606,8 @@ function scan_dashboard(
                         # ja que o stride_J do motor e sempre positivo.
                         state = BitCrackEngine.init_engine(curr_base, first_h160, batch_sz, batch_sz * n_threads, CFG.both_formats)
                     else
-                        r_safe = safe_rng_max > rng_min ? safe_rng_max : rng_max
-                        curr_base = BigInt(rand(rng_min:r_safe))
+                        r_safe = safe_rng_max > start_key ? safe_rng_max : rng_max
+                        curr_base = BigInt(rand(start_key:r_safe))
                         state = BitCrackEngine.init_engine(curr_base, first_h160, batch_sz, batch_sz * n_threads, CFG.both_formats)
                     end
 
@@ -660,9 +676,9 @@ function scan_dashboard(
                     curr_base -= BigInt(batch_sz * n_threads)
                     P_base = SecpOptimized.add_points_jacobian(P_base, G_batch_step_neg)
                 else
-                    # Aleatório: novo ponto de partida, mas reutiliza lote incremental
-                    r_safe = safe_rng_max > rng_min ? safe_rng_max : rng_max
-                    curr_base = BigInt(rand(rng_min:r_safe))
+                    # Aleatório: novo ponto de partida, respeitando o limite start_key
+                    r_safe = safe_rng_max > start_key ? safe_rng_max : rng_max
+                    curr_base = BigInt(rand(start_key:r_safe))
                     P_base = SecpOptimized.scalar_mul(curr_base, SecpOptimized.G_J)
                 end
 
@@ -807,7 +823,28 @@ function menu_scan()
             println("  $(W)Posição:$(X) $(round(pct*100, digits=4))%\n")
             sleep(1.5)
             
-            scan_dashboard([addr], r_min, r_max, 1, start_key, puzzle_id=CFG.wallet_num)
+            str_fim = input("  $(W)Digite a % final (vazio para 100%): $(X)")
+            pf_input = tryparse(Float64, replace(str_fim, "," => "."))
+            
+            r_max_custom = r_max
+            if pf_input !== nothing
+                pf = pf_input > 2.0 ? pf_input / 100.0 : pf_input
+                pf = min(max(pf, 0.0), 1.0)
+                
+                factor = BigInt(1_000_000_000)
+                pf_big = BigInt(floor(pf * 1_000_000_000))
+                end_offset = (rng_size * pf_big) ÷ factor
+                r_max_custom = r_min + end_offset
+                r_max_custom = min(r_max_custom, r_max)
+            end
+
+            println("\n  $(W)Deseja rodar de forma:$(X)")
+            println("  $(G)[1]$(X) Sequencial")
+            println("  $(M)[2]$(X) Aleatória")
+            escolha_modo = input("\n  Opção (padrão 1): ")
+            modo_pct = escolha_modo == "2" ? 3 : 1
+            
+            scan_dashboard([addr], r_min, r_max_custom, modo_pct, start_key, puzzle_id=CFG.wallet_num)
         end
     elseif op == "5"
         return
@@ -866,6 +903,7 @@ function main()
         modo_id   = 3
         cpu_val   = Sys.CPU_THREADS
         pct       = 0.0
+        pct_fim   = -1.0
         start_hex = ""
 
         i = 1
@@ -890,6 +928,8 @@ function main()
                 cpu_val = parse(Int, ARGS[i+1]); i += 2
             elseif ARGS[i] == "--porcentagem"
                 pct = parse(Float64, ARGS[i+1]); i += 2
+            elseif ARGS[i] == "--fim"
+                pct_fim = parse(Float64, ARGS[i+1]); i += 2
             elseif ARGS[i] == "--start"
                 start_hex = replace(ARGS[i+1], "0x" => ""); i += 2
             elseif ARGS[i] == "--batch"
@@ -898,6 +938,18 @@ function main()
                 CFG.both_formats = true; i += 1
             elseif ARGS[i] == "--sem-checkpoint"
                 CFG.use_checkpoint = false; i += 1
+            elseif ARGS[i] == "--checkpoint"
+                c_val = lowercase(ARGS[i+1])
+                if c_val == "off"
+                    CFG.use_checkpoint = false
+                else
+                    v = tryparse(Int, c_val)
+                    if !isnothing(v)
+                        CFG.use_checkpoint = true
+                        CFG.checkpoint_interval = max(5, v)
+                    end
+                end
+                i += 2
             elseif ARGS[i] == "--motor"
                 m_str = lowercase(ARGS[i+1])
                 if m_str == "bitcrack"; CFG.engine = :bitcrack
@@ -924,7 +976,7 @@ function main()
 
             if modo_id == 2
                 start_key = r_max
-            elseif pct > 0 && modo_id == 1
+            elseif pct > 0
                 p = pct > 2.0 ? pct / 100.0 : pct
                 p = min(max(p, 0.0), 1.0)
                 
@@ -934,6 +986,27 @@ function main()
                 rng_size  = r_max - r_min + 1
                 offset    = (rng_size * p_big) ÷ factor
                 start_key = r_min + offset
+            end
+
+            # Lógica de limite final (Custom Range)
+            r_max_custom = r_max
+            if pct_fim >= 0
+                # Se fim == porcentagem, assume +1%
+                pf = pct_fim == pct ? pct + 1.0 : pct_fim
+                pf_input = pf > 2.0 ? pf / 100.0 : pf
+                pf_val = min(max(pf_input, 0.0), 1.0)
+                
+                pf_big = BigInt(floor(pf_val * 1_000_000_000))
+                factor = BigInt(1_000_000_000)
+                rng_size = r_max - r_min + 1
+                end_offset = (rng_size * pf_big) ÷ factor
+                r_max_custom = r_min + end_offset
+                
+                # Garante que r_max_custom não ultrapasse r_max e seja > start_key
+                r_max_custom = min(r_max_custom, r_max)
+                if r_max_custom <= start_key
+                    r_max_custom = min(start_key + BigInt(1_000_000), r_max)
+                end
             end
 
             println("$(G)=== BTC KEY HUNTER v2.0 • HEADLESS MODO ===$(X)")
@@ -950,7 +1023,7 @@ function main()
                 CFG.gpu = false; sleep(2)
             end
 
-            scan_dashboard([CFG.wallet_addr], r_min, r_max, modo_id, start_key, puzzle_id=puzzle_id)
+            scan_dashboard([CFG.wallet_addr], r_min, r_max_custom, modo_id, start_key, puzzle_id=puzzle_id)
             exit(0)
         else
             println("$(R)Erro: Puzzle $puzzle_id inválido.$(X)")
