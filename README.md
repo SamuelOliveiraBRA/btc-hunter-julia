@@ -38,7 +38,9 @@ A **Bitcoin Puzzle Collection** foi lançada em 2015 por um doador anônimo para
 3.  Instale o Git: `winget install Git.Git`
 4.  Clone este repositório: `git clone https://github.com/SamuelOliveiraBRA/btc-hunter-julia.git`
 5.  Entre na pasta: `cd btc-hunter-julia`
-6.  Configure o ambiente: `julia --project=. -e "using Pkg; Pkg.instantiate()"`
+6.  Configure o ambiente (MANDATÓRIO): `julia --project=. -e "using Pkg; Pkg.instantiate()"`
+    > [!IMPORTANT]
+    > Se você ver um erro como `ArgumentError: Package ... not installed`, repita este passo acima. Ele garante que todas as bibliotecas matemáticas e de GPU (CUDA) sejam baixadas corretamente.
 
 ### 🍎 macOS / 🐧 Linux
 1.  Instale o Julia pelo site oficial ou via `brew install --cask julia`.
@@ -173,6 +175,8 @@ Sempre que uma chave é encontrada, ela é salva instantaneamente em `outputs/en
 1.  **"Julia not found"**: Adicione a pasta `bin` do Julia às variáveis de ambiente (PATH) do seu Windows ou reinstale via `winget`.
 2.  **"CUDA Error"**: Verifique se sua placa é NVIDIA e se os drivers estão na versão 525 ou superior.
 3.  **"PC Travando"**: Reduza a intensidade da GPU (ex: de `:12` para `:4`) ou o número de CPUs (`--cpus 2`).
+4.  **"ArgumentError: Package ... not installed"**: Isso significa que as dependências não foram instaladas ou estão corrompidas. Rode: `julia --project=. -e "using Pkg; Pkg.instantiate()"` para resolver.
+5.  **"Atualizar pacotes"**: Se quiser garantir que está na última versão de tudo, rode: `julia --project=. -e "using Pkg; Pkg.update()"`
 
 ---
 Desenvolvido por [SamuelOliveiraBRA](https://github.com/SamuelOliveiraBRA) 🚀
