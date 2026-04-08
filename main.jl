@@ -1,6 +1,6 @@
 using Pkg; Pkg.activate(".")
 # ═══════════════════════════════════════════════════════════
-#  BTC KEY HUNTER  ·  Julia Edition  ·  v1.5.0
+#  BTC HUNTER JULIA  ·  Julia Edition  ·  v1.5.0
 #  Arquitetura Modular & Performance Otimizada
 # ═══════════════════════════════════════════════════════════
 

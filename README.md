@@ -1,10 +1,10 @@
-# 🚀 BTC Key Hunter (Julia Edition) - O Manual Mestre v1.5.0
+# 🚀 BTC Hunter Julia - O Manual Mestre v1.5.0
 
 [![Julia](https://img.shields.io/badge/Julia-1.10%2B-9558B2?logo=julia&logoColor=white)](https://julialang.org)
 [![Performance](https://img.shields.io/badge/Performance-Montgomery--Acelerado-orange)](#-motores-de-busca)
 [![GPU](https://img.shields.io/badge/GPU-CUDA--Acelerado-green)](https://developer.nvidia.com/cuda-zone)
 
-Este é o manual definitivo para o **BTC Key Hunter**, um ecossistema de busca de chaves privadas Bitcoin de altíssima performance para resolver a **Bitcoin Puzzle Collection**. Este documento agrupa todo o conhecimento técnico, guias de instalação e exemplos práticos para o uso 100% eficaz da ferramenta.
+Este é o manual definitivo para o **BTC Hunter Julia**, um ecossistema de busca de chaves privadas Bitcoin de altíssima performance para resolver a **Bitcoin Puzzle Collection**.
 
 ---
 
