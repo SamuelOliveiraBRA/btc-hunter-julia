@@ -58,7 +58,8 @@
       "min": "0x200",
       "max": "0x3ff",
       "status": 1,
-      "endereco": "1LeBZP5QCwwgXRtmVUvTVrraqPUokyLHqe"
+      "endereco": "1LeBZP5QCwwgXRtmVUvTVrraqPUokyLHqe",
+      "pubkey": "03a7a4c30291ac1db24b4ab00c442aa832f7794b5a0959bec6e8d7fee802289dcd"
     },
     {
       "min": "0x400",
@@ -148,7 +149,8 @@
       "min": "0x1000000",
       "max": "0x1ffffff",
       "status": 1,
-      "endereco": "15JhYXn6Mx3oF4Y7PcTAv2wVVAuCFFQNiP"
+      "endereco": "15JhYXn6Mx3oF4Y7PcTAv2wVVAuCFFQNiP",
+      "pubkey": "03057fbea3a2623382628dde556b2a0698e32428d3cd225f3bd034dca82dd7455a"
     },
     {
       "min": "0x2000000",
@@ -178,7 +180,8 @@
       "min": "0x20000000",
       "max": "0x3fffffff",
       "status": 1,
-      "endereco": "1LHtnpd8nU5VHEMkG2TMYYNUjjLc992bps"
+      "endereco": "1LHtnpd8nU5VHEMkG2TMYYNUjjLc992bps",
+      "pubkey": "030d282cf2ff536d2c42f105d0b8588821a915dc3f9a05bd98bb23af67a2e92a5b"
     },
     {
       "min": "0x40000000",

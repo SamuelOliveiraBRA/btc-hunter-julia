@@ -9,6 +9,8 @@ mutable struct Config
     internet::Bool
     gpu::Bool
     gpu_intensity::Int
+    gpu_name::String
+    gpu_mem::String
     wallet_num::Int
     wallet_addr::String
     wallet_status::Int
@@ -40,8 +42,8 @@ end
 function load_settings()
     # Padrões iniciais
     default_cfg = Config(
-        Sys.CPU_THREADS, false, false, 1, 0, "", 0,
-        "0x0", "0x0", "", 0, true, 512, false, true, 30, :secp
+        Sys.CPU_THREADS, false, false, 2048, "NVIDIA", "---", 0, "", 0,
+        "0x0", "0x0", "", 0, true, 2048, false, true, 30, :secp
     )
 
     if !isfile(SETTINGS_FILE)

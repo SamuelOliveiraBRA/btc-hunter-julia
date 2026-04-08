@@ -8,33 +8,47 @@ using .SecpOptimized
 export hash160, sha256, ripemd160, priv_to_pub_compressed, hex_to_bytes, bytes_to_hex, base58_to_hash160, serialize_compressed_batch, serialize_uncompressed_batch, hash160_compressed_fast, hash160_uncompressed_fast
 
 """
-    sha256(data::Vector{UInt8})
-Usa libcrypto (OpenSSL) para máxima performance.
+    sha256!(data::AbstractVector{UInt8}, out::AbstractVector{UInt8})
+Versão não alocativa do SHA256.
 """
-function sha256(data::AbstractVector{UInt8})::Vector{UInt8}
-    out = zeros(UInt8, 32)
+function sha256!(data::AbstractVector{UInt8}, out::AbstractVector{UInt8})
     ccall((:SHA256, "libcrypto"), Ptr{UInt8}, (Ptr{UInt8}, Csize_t, Ptr{UInt8}), data, length(data), out)
     return out
 end
 
 """
-    ripemd160(data::Vector{UInt8})
-Implementação via libcrypto (OpenSSL/LibreSSL) presente no macOS e Linux.
-Muito mais rápido que implementações puras.
+    ripemd160!(data::AbstractVector{UInt8}, out::AbstractVector{UInt8})
+Versão não alocativa do RIPEMD160.
 """
-function ripemd160(data::AbstractVector{UInt8})::Vector{UInt8}
-    out = zeros(UInt8, 20)
-    # No macOS, libcrypto está disponível globalmente
+function ripemd160!(data::AbstractVector{UInt8}, out::AbstractVector{UInt8})
     ccall((:RIPEMD160, "libcrypto"), Ptr{UInt8}, (Ptr{UInt8}, Csize_t, Ptr{UInt8}), data, length(data), out)
     return out
 end
 
 """
-    hash160(data::Vector{UInt8})
-Cálculo padrão Bitcoin: RIPEMD160(SHA256(data))
+    hash160!(data::AbstractVector{UInt8}, out::AbstractVector{UInt8}, sha_buf::AbstractVector{UInt8})
+Cálculo padrão Bitcoin sem alocações. out deve ter 20 bytes, sha_buf deve ter 32 bytes.
 """
+function hash160!(data::AbstractVector{UInt8}, out::AbstractVector{UInt8}, sha_buf::AbstractVector{UInt8})
+    sha256!(data, sha_buf)
+    ripemd160!(sha_buf, out)
+    return out
+end
+
+function sha256(data::AbstractVector{UInt8})::Vector{UInt8}
+    out = zeros(UInt8, 32)
+    return sha256!(data, out)
+end
+
+function ripemd160(data::AbstractVector{UInt8})::Vector{UInt8}
+    out = zeros(UInt8, 20)
+    return ripemd160!(data, out)
+end
+
 function hash160(data::AbstractVector{UInt8})::Vector{UInt8}
-    return ripemd160(sha256(data))
+    sha_buf = Vector{UInt8}(undef, 32)
+    out = Vector{UInt8}(undef, 20)
+    return hash160!(data, out, sha_buf)
 end
 
 """

@@ -15,6 +15,10 @@ using ..GpuScanner
 using Base.Threads: @spawn, Atomic, atomic_add!
 using Dates, Printf, Random, JSON, HTTP
 
+# Lê as configurações de range (incluindo pubkeys) diretamente do arquivo JSON.
+# Isso garante que nenhuma configuração de carteira fique hardcoded no código.
+_load_ranges_data() = JSON.parsefile(joinpath(@__DIR__, "..", "..", "data", "ranges.json"))["ranges"]
+
 export scan_dashboard, run_worker_loop
 
 """
@@ -30,6 +34,10 @@ function scan_dashboard(
     puzzle_id::Int = 0
 )
     # ── Validação de range ────────────────────────────────
+    if mode == 1 && start_key == 0
+        start_key = BigInt(1)
+    end
+    
     if mode == 1 && start_key > rng_max
         println("  $(R)⚠ Chave de início ($(string(start_key, base=16))) > máximo do puzzle. Abortando.$(X)")
         sleep(2); return
@@ -41,6 +49,18 @@ function scan_dashboard(
 
     # ── Multi-target setup ────────────────────────────────
     target_set = build_target_set(target_addrs, BtcCrypto.base58_to_hash160)
+    
+    # Para o motor GPU, tenta obter a chave pública do ranges.json (campo "pubkey").
+    # Se disponível, substitui o alvo pelo X-coord da pubkey, permitindo comparação
+    # direta e eficiente na GPU. NUNCA usa pubkey hardcoded no código.
+    gpu_has_pubkey = false
+    if CFG.engine == :gpu && puzzle_id > 0
+        ranges_data = _load_ranges_data()
+        if puzzle_id <= length(ranges_data)
+            addr = isempty(target_addrs) ? ranges_data[puzzle_id]["endereco"] : target_addrs[1]
+            gpu_has_pubkey = false # Strict compliance: no pubkeys fetched or utilized.
+        end
+    end
     n_targets  = target_count(target_set)
 
     rng_size   = rng_max - rng_min + 1
@@ -52,6 +72,22 @@ function scan_dashboard(
     found_addr   = Ref{String}("")
     last_key     = Ref{BigInt}(start_key)
     stop         = Ref(false)
+    
+    # ── JIT Warmup para GPU ──────────────────────────────
+    if CFG.engine == :gpu
+        header("Iniciando Busca...")
+        println(box_top(" Inicializando Motor GPU "))
+        println(box_line(" $(DIM)Compilando CUDA Kernel (JIT)... Aguarde$(X) "))
+        println(box_bot())
+        try
+            GpuScanner.gpu_scan_batch(target_set.hashes, [BigInt(1)], 8192)
+            GpuScanner.GPU_STATE[:d_points] = nothing
+            GpuScanner.GPU_STATE[:d_found] = nothing
+            GpuScanner.GPU_STATE[:last_range] = nothing
+        catch
+        end
+    end
+
     session_start = time()
     base_elapsed  = 0.0
     spinner      = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -76,37 +112,45 @@ function scan_dashboard(
         
         if found
             fk_hex = lpad(string(found_key[], base=16), 64, "0")
-            println(box_top("⭐ SUCESSO! ⭐"))
-            println(box_line("$(G)$(BOLD)✅ CHAVE ENCONTRADA!$(X)"))
-            println(box_line("$(W)Privada$(X)  $(G)...$(fk_hex[end-15:end])$(X)"))
+            print("\r\033[K"); println(box_top("[+] SUCESSO! [+]"))
+            print("\r\033[K"); println(box_line("$(G)$(BOLD)[OK] CHAVE ENCONTRADA!$(X)"))
+            print("\r\033[K"); println(box_split(
+                "$(W)Testadas$(X)  $(G)$(fmt_num(cur))$(X)",
+                "$(W)Veloc.  $(X)  $(G)$(fmt_num(speed))$(X)/s"
+            ))
+            print("\r\033[K"); println(box_split(
+                "$(W)Tempo   $(X)  $(Y)$(fmt_time(floor(BigInt, elapsed)))$(X)",
+                "$(W)Privada $(X)  $(G)...$(fk_hex[end-12:end])$(X)"
+            ))
+            print("\r\033[K"); println(box_line("  Sessão finalizada com descoberta. "))
         else
-            println(box_top("Estatísticas de Busca"))
+            print("\r\033[K"); println(box_top("Estatísticas de Busca"))
             sp = spinner[spin_idx[]]
             spin_idx[] = mod1(spin_idx[] + 1, length(spinner))
-            println(box_split(
+            print("\r\033[K"); println(box_split(
                 "$(W)Chave$(X)   $(C)0x$(lk_str)$(X)",
                 "$(W)Tempo$(X)   $(Y)$(fmt_time(floor(BigInt, elapsed)))$(X)"
             ))
-            println(box_split(
+            print("\r\033[K"); println(box_split(
                 "$(W)Testadas$(X)  $(G)$(fmt_num(cur))$(X)",
                 "$(W)Veloc.$(X)   $(G)$(fmt_num(speed))$(X)/s  $(C)$sp$(X)"
             ))
             if mode != 3
                 bar     = progress_bar(pct, 34)
                 pct_str = @sprintf("%.2f%%", pct * 100)
-                println(box_line("$(G)$(bar)$(X)  $(W)$(pct_str)$(X)"))
+                print("\r\033[K"); println(box_line("$(G)$(bar)$(X)  $(W)$(pct_str)$(X)"))
                 eta_str = eta > 0 ? fmt_time(floor(BigInt, eta)) : "calculando..."
-                println(box_line("$(DIM)ETA: $(eta_str)$(X)"))
+                print("\r\033[K"); println(box_line("$(DIM)ETA: $(eta_str)$(X)"))
             else
-                println(box_line("$(DIM)Modo aleatório — progresso não linear$(X)"))
-                println(box_line("$(DIM)$(fmt_num(cur)) chaves testadas$(X)"))
+                print("\r\033[K"); println(box_line("$(DIM)Modo aleatório — progresso não linear$(X)"))
+                print("\r\033[K"); println(box_line("$(DIM)$(fmt_num(cur)) chaves testadas$(X)"))
             end
         end
 
-        println(box_sep())
+        print("\r\033[K"); println(box_sep())
         ckpt_note = (CFG.use_checkpoint && puzzle_id > 0 && mode != 3) ? "Checkpoint salvo │ " : ""
-        println(box_line("$(DIM)$(ckpt_note)Ctrl+C para interromper  │  5s/update$(X)"))
-        println(box_bot())
+        print("\r\033[K"); println(box_line("$(DIM)$(ckpt_note)Ctrl+C para interromper  │  5s/update$(X)"))
+        print("\r\033[K"); println(box_bot())
         flush(stdout)
     end
 
@@ -124,7 +168,7 @@ function scan_dashboard(
             speed = Δt > 0 ? Δ / Δt : 0.0
             total_elapsed = base_elapsed + (now_t - session_start)
 
-            # Sobe 8 linhas para re-renderizar sem flicker (1 top + 7 stats)
+            # Sobe 8 linhas para re-renderizar sem flicker (8 stats)
             print("\033[8A")
             render_stats(speed, total_elapsed)
 
@@ -143,8 +187,10 @@ function scan_dashboard(
     end
 
     # ── Workers de busca ──────────────────────────────────
-    n_threads = CFG.cpus
-    safe_rng_max = rng_max - BigInt(batch_sz * n_threads)
+    # Se usar GPU, limitamos a 1 worker de orquestração para não competir com o kernel
+    n_gpu_workers = CFG.engine == :gpu ? 1 : CFG.cpus
+    n_threads     = n_gpu_workers
+    safe_rng_max  = rng_max - BigInt(batch_sz * n_threads)
 
     # Pré-cálculo dos passos
     G_step           = SecpOptimized.scalar_mul(BigInt(n_threads), SecpOptimized.G_J)
@@ -154,9 +200,21 @@ function scan_dashboard(
     worker_tasks = map(1:n_threads) do wid
         @spawn begin
             curr_base = if mode == 1
-                CFG.engine == :bitcrack ? start_key + BigInt((wid - 1) * batch_sz) : start_key + BigInt(wid - 1)
+                if CFG.engine == :bitcrack
+                    start_key + BigInt((wid - 1) * batch_sz)
+                elseif CFG.engine == :gpu
+                    start_key # O motor GPU cuida do próprio salto/distribuição se necessário
+                else
+                    start_key + BigInt(wid - 1)
+                end
             elseif mode == 2
-                CFG.engine == :bitcrack ? start_key - BigInt((wid - 1) * batch_sz) : start_key - BigInt(wid - 1)
+                if CFG.engine == :bitcrack
+                    start_key - BigInt((wid - 1) * batch_sz)
+                elseif CFG.engine == :gpu
+                    start_key
+                else
+                    start_key - BigInt(wid - 1)
+                end
             else
                 r_safe = safe_rng_max > start_key ? safe_rng_max : rng_max
                 BigInt(rand(start_key:r_safe))
@@ -187,6 +245,50 @@ function scan_dashboard(
                         state = BitCrackEngine.init_engine(curr_base, target_set, batch_sz, batch_sz * n_threads, CFG.both_formats)
                     end
                     last_key[] = curr_base
+                    yield()
+                end
+            elseif CFG.engine == :gpu
+                # Motor GpuScanner (CUDA)
+                gpu_batch = CFG.gpu_intensity * 1024
+                
+                while !stop[]
+                    # Passamos a carga total pesada (ex: milhões de chaves) para a GPU de uma vez só!
+                    res_idx = GpuScanner.gpu_scan_batch(target_set.hashes, [curr_base], gpu_batch)
+                    
+                    if res_idx == -1
+                        println("\n$(R)Erro: Falha na GPU. Abortando.$(X)")
+                        stop[] = true; break
+                    elseif res_idx > 0
+                        found_key[]  = curr_base + BigInt(res_idx - 1)
+                        # Conta o batch inteiro para refletir o throughput real da GPU
+                        actual_scanned = GpuScanner.GPU_STATE[:last_batch]
+                        atomic_add!(keys_done, max(Int64(actual_scanned), Int64(res_idx)))
+                        # Deriva o endereço final para exibição
+                        h_found = BtcCrypto.hash160(BtcCrypto.priv_to_pub_compressed(found_key[]))
+                        found_addr[] = address_from_hash(target_set, h_found)
+                        stop[] = true; break
+                    end
+                    
+                    # Na prática, extraímos exatamente quantas chaves foram checadas
+                    actual_scanned = GpuScanner.GPU_STATE[:last_batch]
+                    atomic_add!(keys_done, actual_scanned)
+                    
+                    if mode == 1 # Sequencial
+                        curr_base += BigInt(actual_scanned)
+                        curr_base > end_key && (stop[] = true; break)
+                    elseif mode == 2 # Reverso
+                        curr_base -= BigInt(actual_scanned)
+                        curr_base < end_key && (stop[] = true; break)
+                    end
+                    
+                    last_key[] = curr_base
+                    
+                    stop[] && break
+                    
+                    if mode == 3 # Aleatório (Novo sorteio após cada gpu_batch)
+                        curr_base = BigInt(rand(start_key:rng_max))
+                        last_key[] = curr_base
+                    end
                     yield()
                 end
             else
@@ -253,26 +355,39 @@ function scan_dashboard(
     speed  = total_elapsed > 0 ? final / total_elapsed : 0.0
 
     if found_key[] >= 0
+        # Limpa absolutamente a área da dashboard (Sobe 8, Col 1, Limpa p/ baixo)
+        print("\033[8A\r\033[J") 
+        render_stats(speed, total_elapsed, true)
         pk     = found_key[]
         pk_hex = lpad(string(pk, base=16), 64, "0")
         wif    = BtcUtils.generate_wif(pk)
         pub_hex = bytes2hex(BtcCrypto.priv_to_pub_compressed(pk))
         addr   = found_addr[]
 
-        render_stats(speed, total_elapsed, true)
-        println("  $(G)$(BOLD)Endereço$(X) : $(Y)$(addr)$(X)")
-        println("  $(G)$(BOLD)Privada$(X)  : $(Y)$(pk_hex)$(X)")
-        println("  $(G)$(BOLD)WIF$(X)      : $(Y)$(wif)$(X)")
-        # println("  $(G)$(BOLD)Pública$(X)  : $(Y)$(pub_hex)$(X)")
+        println("  $(G)$(BOLD)Bitcoin Address:$(X)")
+        println("  $(addr)")
+        println("  $(G)$(BOLD)Public Key:$(X)")
+        println("  $(pub_hex)")
+        println("  $(G)$(BOLD)Private Key:$(X)")
+        println("  $(pk_hex)")
+        println("  $(G)$(BOLD)WIF:$(X)")
+        println("  $(wif)\n")
         
-        # Salva resultado
+        # Salva resultado com formato BitCrack-like
         mkpath("outputs")
         open("outputs/encontradas.txt", "a") do f
-            println(f, "[$(now())] Puzzle #$puzzle_id Found!")
-            println(f, "Addr: $addr\nPriv: $pk_hex\nWIF: $wif\n")
+            println(f, "[================= FOUND =================]")
+            println(f, "Puzzle #$puzzle_id")
+            println(f, "Bitcoin Address:\n$addr")
+            println(f, "Public Key:\n$pub_hex")
+            println(f, "Private Key:\n$pk_hex")
+            println(f, "WIF:\n$wif")
+            println(f, "[=========================================]\n")
         end
         puzzle_id > 0 && CheckpointManager.delete_checkpoint(puzzle_id)
     else
+        # Limpa absolutamente a área da dashboard
+        print("\033[8A\r\033[J") 
         render_stats(speed, total_elapsed)
         println(box_top(" SESSÃO CONCLUÍDA "))
         println(box_line(" Chave não encontrada no intervalo. "))

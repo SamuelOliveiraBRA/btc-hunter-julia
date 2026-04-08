@@ -1,42 +1,58 @@
 module PuzzleData
 
+using JSON
+
 export Puzzle, get_puzzle, ALL_PUZZLES
 
 struct Puzzle
     number::Int
     address::String
-    pubkey::String # Pode ser vazia
+    pubkey::String  # Pode ser vazia se não configurada no ranges.json
     start_range::BigInt
     end_range::BigInt
 end
 
-# Lista de Puzzles extraída do btcpuzzle.info
-# O range de cada puzzle #N é entre 2^(N-1) e (2^N) - 1.
-function calculate_range(n::Int)
-    start = BigInt(2)^(n-1)
-    stop = (BigInt(2)^n) - 1
-    return start, stop
+# Caminho para o arquivo de configuração de ranges
+const _RANGES_FILE = joinpath(@__DIR__, "..", "data", "ranges.json")
+
+"""
+    _load_all_puzzles()
+Carrega todos os puzzles dinamicamente do `data/ranges.json`.
+Nenhum dado de carteira ou pubkey é hardcoded aqui.
+"""
+function _load_all_puzzles()::Dict{Int, Puzzle}
+    result = Dict{Int, Puzzle}()
+    try
+        ranges = JSON.parsefile(_RANGES_FILE)["ranges"]
+        for (i, r) in enumerate(ranges)
+            addr   = get(r, "endereco", "")
+            pubkey = get(r, "pubkey",   "")
+            r_min  = parse(BigInt, replace(get(r, "min", "0x1"), "0x" => "", "0X" => ""), base=16)
+            r_max  = parse(BigInt, replace(get(r, "max", "0x1"), "0x" => "", "0X" => ""), base=16)
+            result[i] = Puzzle(i, addr, pubkey, r_min, r_max)
+        end
+    catch e
+        @warn "Erro ao carregar ranges.json em PuzzleData: $e"
+    end
+    return result
 end
 
-# Base de Dados de Puzzles Resolvidos e Não Resolvidos
-const ALL_PUZZLES = Dict{Int, Puzzle}(
-    25 => Puzzle(25, "15JhYXn6Mx3oF4Y7PcTAv2wVVAuCFFQNiP", "", calculate_range(25)...),
-    66 => Puzzle(66, "13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so", "", calculate_range(66)...),
-    71 => Puzzle(71, "1PWo3JeB9jrGwfHDNpdGK38CRKyfzv6nL5", "", calculate_range(71)...),
-    160 => Puzzle(160, "1F9wP9n86676khS76khS76khS76khS76kh", "02e0a8b039282faf6fe0fd769cfbc4b6b4cf8758ba68220eac420e32b91ddfa673", calculate_range(160)...)
-)
+# Dicionário global carregado uma vez na inicialização do módulo
+const ALL_PUZZLES = _load_all_puzzles()
 
 """
     get_puzzle(n::Int)
 Retorna as informações do puzzle pelo seu número.
+Lê do ranges.json — sem dados hardcoded.
 """
 function get_puzzle(n::Int)::Puzzle
     if haskey(ALL_PUZZLES, n)
         return ALL_PUZZLES[n]
     else
-        # Calcula range dinamicamente se não estiver no dict
-        s, e = calculate_range(n)
-        return Puzzle(n, "", "", s, e)
+        # Puzzle fora do ranges.json: calcula o range matematicamente
+        r_start = BigInt(2)^(n - 1)
+        r_end   = (BigInt(2)^n) - 1
+        return Puzzle(n, "", "", r_start, r_end)
     end
 end
 

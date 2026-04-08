@@ -12,11 +12,13 @@ include("src/Base58.jl")
 include("src/BtcCrypto.jl")
 include("src/BtcUtils.jl")
 include("src/CheckpointManager.jl")
+include("src/PuzzleData.jl")
 include("src/BloomFilter.jl")
 include("src/MultiTarget.jl")
 
 using .Base58, .BtcCrypto, .BtcUtils
 using .CheckpointManager
+using .PuzzleData
 using .BloomFilter
 using .MultiTarget
 
@@ -40,7 +42,7 @@ using .ScannerOrchestrator
 include("src/Benchmark.jl")
 using .BenchmarkModule
 
-using HTTP, JSON, Random, Dates, Printf
+using HTTP, JSON, Random, Dates, Printf, CUDA
 
 # ── Utilitários Adicionais ───────────────────────────────
 hex2big(s) = parse(BigInt, replace(strip(s), "0x" => "", "0X" => ""), base=16)
@@ -69,6 +71,32 @@ function parse_cli_args()
             i += 1
         elseif arg == "--motor" && i < length(args)
             engine = Symbol(args[i+1])
+            i += 1
+        elseif startswith(arg, "--gpu")
+            engine = :gpu
+            CFG.gpu = true
+            if occursin(":", arg)
+                val = tryparse(Int, split(arg, ":")[2])
+                if !isnothing(val)
+                    CFG.gpu_intensity = val
+                end
+            end
+        elseif arg == "--batch" && i < length(args)
+            val = tryparse(Int, args[i+1])
+            if !isnothing(val); CFG.batch_size = val; end
+            i += 1
+        elseif arg == "--cpus" && i < length(args)
+            val = tryparse(Int, args[i+1])
+            if !isnothing(val); CFG.cpus = val; end
+            i += 1
+        elseif arg == "--checkpoint" && i < length(args)
+            val = args[i+1]
+            if val == "off"
+                CFG.use_checkpoint = false
+            else
+                v = tryparse(Int, val)
+                if !isnothing(v); CFG.checkpoint_interval = v; end
+            end
             i += 1
         elseif arg == "--porcentagem" && i < length(args)
             p_start = tryparse(Float64, args[i+1])
@@ -170,6 +198,46 @@ function habilitar_internet()
     end
 end
 
+function escolher_gpu()
+    while true
+        header("Configuração › GPU")
+        status = CFG.gpu ? "$(G)Ligada$(X)" : "$(R)Desligada$(X)"
+        println("  Estado Atual: $status")
+        println("  Intensidade: $(C)$(CFG.gpu_intensity)$(X) (Threads/Bloco)\n")
+        
+        is_gpu_ready = !contains(CFG.gpu_name, "Incompatível")
+        println("  $(G)[1]$(X)  Ativar/Desativar GPU")
+        println("  $(Y)[2]$(X)  Configurar Intensidade")
+        println("  $(B)[3]$(X)  Testar Performance (Benchmark)")
+        println("  $(DIM)[0]  Voltar$(X)\n")
+        
+        op = UIModule.input("  Escolha: ")
+        if op == "1"
+            if is_gpu_ready
+                CFG.gpu = !CFG.gpu
+                if CFG.gpu; CFG.engine = :gpu; end # Auto-seleciona motor se ligar
+                ConfigModule.save_settings(CFG)
+            else
+                println("\n  $(R)● Placa incompatível.$(X)"); sleep(1)
+            end
+        elseif op == "2"
+            s = UIModule.input("  $(W)Nova Intensidade$(X) [256, 512, 1024, 2048]: ")
+            v = tryparse(Int, strip(s))
+            if v !== nothing && v in [256, 512, 1024, 2048]
+                CFG.gpu_intensity = v
+                ConfigModule.save_settings(CFG)
+                println("  $(G)✓ Intensidade alterada para $(v)!$(X)"); sleep(1)
+            else
+                println("  $(R)Erro: Escolha um valor válido.$(X)"); sleep(1)
+            end
+        elseif op == "3"
+            BenchmarkModule.run_gpu_benchmark()
+        elseif op == "0"
+            break
+        end
+    end
+end
+
 
 function escolher_carteira(ranges)
     page_size = 15; page = 1; total = length(ranges)
@@ -213,9 +281,13 @@ function escolher_motor()
     println("  $(DIM)[0]  Voltar$(X)\n")
     
     m_op = UIModule.input("  Opção: ")
-    if m_op == "1"; CFG.engine = :secp
-    elseif m_op == "2"; CFG.engine = :bitcrack
-    elseif m_op == "3"; CFG.engine = :gpu
+    if m_op == "1"
+        CFG.engine = :secp
+    elseif m_op == "2"
+        CFG.engine = :bitcrack
+    elseif m_op == "3"
+        CFG.engine = :gpu
+        CFG.gpu = true # Garante que a GPU seja sinalizada como ativa
     end
     ConfigModule.save_settings(CFG)
 end
@@ -225,15 +297,17 @@ function config_menu()
         header("Configurações")
         println("  $(B)[1]$(X)  Configurar CPUs     $(DIM)($(CFG.cpus) cores)$(X)")
         println("  $(C)[2]$(X)  Configurar Internet $(DIM)($(CFG.internet ? "Ligada" : "Desligada"))$(X)")
-        println("  $(M)[3]  Benchmark / Ajuste$(X)")
-        println("  $(Y)[4]  Formato de Busca $(DIM)($(CFG.both_formats ? "Ambos" : "Comprimido"))$(X)")
+        println("  $(G)[3]$(X)  Configurar GPU      $(DIM)($(CFG.gpu ? "Ativa" : "Desativada"))$(X)")
+        println("  $(M)[4]  Benchmark / Ajuste$(X)")
+        println("  $(Y)[5]  Formato de Busca $(DIM)($(CFG.both_formats ? "Ambos" : "Comprimido"))$(X)")
         println("  $(DIM)[0]  Voltar$(X)\n")
 
         op = UIModule.input("  Opção: ")
         if op == "1"; escolher_cpus()
         elseif op == "2"; habilitar_internet()
-        elseif op == "3"; run_benchmark()
-        elseif op == "4"
+        elseif op == "3"; escolher_gpu()
+        elseif op == "4"; run_benchmark()
+        elseif op == "5"
             CFG.both_formats = !CFG.both_formats
             ConfigModule.save_settings(CFG)
         elseif op == "0"; break
@@ -347,10 +421,25 @@ end
 function main()
     mkpath("outputs")
     
+    # Detecção automática de GPU
+    try
+        if CUDA.functional()
+            dev = CUDA.device()
+            CFG.gpu_name = CUDA.name(dev)
+            vram_gb = CUDA.totalmem(dev) / (1024^3)
+            CFG.gpu_mem = @sprintf("%.1f GB", vram_gb)
+            
+            # Testa se a placa REALMENTE compila kernels de forma funcional
+            if !GpuScanner.check_compatibility()
+                # Se não for compatível, avisa mas não impede o CPU
+                CFG.gpu = false
+                CFG.gpu_name = "$(CFG.gpu_name) (Incompatível)"
+            end
+        end
+    catch; end
+
     # Tenta processar argumentos de linha de comando primeiro
-    if parse_cli_args()
-        return
-    end
+    parse_cli_args()
 
     # splash()  # Removido para evitar duplicidade, já que header() faz o trabalho
     main_menu()

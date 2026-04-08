@@ -41,15 +41,16 @@ const W_BOX = 62
 
 function box_line(content="", color="")
     raw = ansi(content)
-    pad = max(0, W_BOX - length(raw))
+    pad = max(0, W_BOX - textwidth(raw))
     "║ $(color)$(content)$(X)$(repeat(" ", pad)) ║"
 end
 
 function box_top(title="")
     t = isempty(title) ? "" : " $title "
     total_w = W_BOX + 2
-    left  = (total_w - length(ansi(t))) ÷ 2
-    right = total_w - left - length(ansi(t))
+    tw = textwidth(ansi(t))
+    left  = (total_w - tw) ÷ 2
+    right = total_w - left - tw
     "╔$(repeat("═", left))$(t)$(repeat("═", right))╗"
 end
 
@@ -58,8 +59,8 @@ box_bot() = "╚$(repeat("═", W_BOX+2))╝"
 
 function box_split(left, right, lw=30, color_l="", color_r="")
     raw_l = ansi(left); raw_r = ansi(right)
-    pad_l = max(0, lw - length(raw_l))
-    pad_r = max(0, W_BOX - lw - 3 - length(raw_r))
+    pad_l = max(0, lw - textwidth(raw_l))
+    pad_r = max(0, W_BOX - lw - 3 - textwidth(raw_r))
     "║ $(color_l)$(left)$(X)$(repeat(" ", pad_l)) │ $(color_r)$(right)$(X)$(repeat(" ", pad_r)) ║"
 end
 
@@ -74,7 +75,7 @@ function header(subtitle="")
     println("  ╚═════╝    ╚═╝    ╚═════╝$(X)\n")
 
     cpu_bar = G * ("■" ^ CFG.cpus) * DIM * ("□" ^ (Sys.CPU_THREADS - CFG.cpus)) * X * " $(DIM)$(CFG.cpus)/$(Sys.CPU_THREADS)$(X)"
-    gpu_bar = CFG.gpu ? (C * ("■" ^ (clamp(CFG.gpu_intensity ÷ 2, 1, 8))) * DIM * ("□" ^ (max(0, 8 - (CFG.gpu_intensity ÷ 2)))) * X) : (DIM * "Desativada" * X)
+    gpu_bar = CFG.gpu ? (C * ("■" ^ (clamp(CFG.gpu_intensity ÷ 256, 1, 8))) * DIM * ("□" ^ (max(0, 8 - (CFG.gpu_intensity ÷ 256)))) * X * " $(DIM)$(CFG.gpu_intensity)$(X)") : (DIM * "Desativada" * X)
     inet_s  = CFG.internet ? G*"● Ativa"*X : DIM*"○ Desativada"*X
     fmt_s   = CFG.both_formats ? C*"C+U"*X : G*"Comprimido"*X
 
@@ -87,9 +88,14 @@ function header(subtitle="")
     end
     println(box_split("$(Y)v1.5.0$(X)  Julia Edition", "$(B)Dev. Samuel Oliveira$(X)"))
     println(box_sep())
+    if !isempty(CFG.gpu_name) && CFG.gpu_name != "NVIDIA"
+        println(box_line("$(DIM)GPU:$(X) $(C)$(CFG.gpu_name)$(X) $(DIM)($(CFG.gpu_mem))$(X)"))
+        println(box_sep())
+    end
     println(box_split("$(W)CPUs$(X)  $cpu_bar", "$(W)GPU$(X)   $gpu_bar"))
-    println(box_split("$(W)Motor$(X)  $eng_s", "$(W)Internet$(X)  $inet_s"))
-    println(box_split("$(W)Formato$(X)  $fmt_s", "$(W)Lote$(X)  $(C)$(CFG.batch_size)$(X)"))
+    b_size = CFG.engine == :gpu ? (CFG.gpu_intensity * 1024) : CFG.batch_size
+    println(box_split("$(W)Buffer$(X)  $(C)$(fmt_num(b_size))$(X)", "$(W)Internet$(X)  $inet_s"))
+    println(box_split("$(W)Motor$(X)  $eng_s", "$(W)Formato$(X)  $fmt_s"))
 
     if CFG.wallet_num > 0
         println(box_sep())
@@ -114,7 +120,6 @@ function header(subtitle="")
         println(box_line("  $(M)$(subtitle)$(X)"))
     end
     println(box_bot())
-    println()
 end
 
 function splash()

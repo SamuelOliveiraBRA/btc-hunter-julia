@@ -102,7 +102,7 @@ Escolhe a implementação técnica (veja a seção de Motores para detalhes). O 
 *   **O valor `:8`**: É a **Intensidade**. Define quantas chaves cada núcleo da GPU processa por ciclo. Valores entre 8 e 12 são ideais. Mais do que isso pode travar a interface do Windows.
 
 ### 8. `--batch 1024`
-*   **Ação**: Define o tamanho do lote de chaves. 
+*   **Ação**: Define o tamanho do Buffer de chaves. 
 *   **Por que importa?**: O processador não testa uma chave por vez e para. Ele testa 1024 chaves, guarda o resultado em um "pacote" e pergunta ao sistema: "Alguma dessas abriu a carteira?". Isso reduz o desperdício de tempo.
 
 ---

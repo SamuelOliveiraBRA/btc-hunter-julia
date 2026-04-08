@@ -1,7 +1,6 @@
 module AddressScanner
 
 using ..BtcCrypto
-using ..PuzzleData
 using Distributed
 using Printf
 using Serialization
