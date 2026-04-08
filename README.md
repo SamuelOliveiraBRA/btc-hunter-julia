@@ -112,8 +112,42 @@ Escolhe a implementação técnica (veja a seção de Motores para detalhes). O 
 | Motor | Nome Técnico | Características |
 | :--- | :--- | :--- |
 | **BitCrack** | `bitcrack` | O mais rápido. Matemática de campo finito ultra-otimizada. Uso obrigatório para GPU. |
-| **Julia/KeyHunter** | `secp` | Versão estável baseada no SecpOptimized. Excelente para multi-threading em CPUs Intel/AMD. |
+| **Julia/SecpOpt** | `secp` | Versão estável baseada no SecpOptimized. Excelente para multi-threading em CPUs Intel/AMD. |
 | **BSGS** | `bsgs` | Algoritmo de colisão (Baby-Step Giant-Step). Muito rápido em áreas pequenas, mas engole muita memória RAM. |
+| **GPU/CUDA** | `gpu` | Aceleração via placa de vídeo NVIDIA. Requer compatibilidade de hardware (veja aviso abaixo). |
+
+> [!WARNING]
+> **Compatibilidade do Motor GPU (CUDA)**
+>
+> O motor GPU requer **CUDA 13.0** ou superior instalado, mas esta versão do CUDA **só suporta placas NVIDIA com Compute Capability 7.0 ou acima** (RTX 20xx, 30xx, 40xx e superiores).
+>
+> Placas mais antigas como a **GTX 10xx** e **GTX 9xx** **não são compatíveis** com CUDA 13.0 e o motor GPU será desativado automaticamente, fazendo fallback para o motor **SecpOpt (CPU)**.
+>
+> **Solução para placas antigas:** Instale o **CUDA Toolkit 11.8** (última versão com suporte a CC 6.x):
+> ```
+> https://developer.nvidia.com/cuda-11-8-0-download-archive
+> ```
+>
+> | Modelo | Compute Capability | CUDA 13.0 | Observação |
+> | :--- | :---: | :---: | :--- |
+> | GTX 750, 750 Ti | 5.0 | ❌ | Maxwell — sem suporte |
+> | GTX 950, 960, 970, 980, 980 Ti | 5.2 | ❌ | Maxwell — sem suporte |
+> | GTX 1050, 1050 Ti | 6.1 | ❌ | Pascal — sem suporte |
+> | GTX 1060, 1070, 1070 Ti | 6.1 | ❌ | Pascal — sem suporte |
+> | GTX 1080, 1080 Ti, Titan X/Xp | 6.1 | ❌ | Pascal — sem suporte |
+> | **GTX 1650, 1650 Super** | **7.5** | **✅** | Turing — compatível |
+> | **GTX 1660, 1660 Super, 1660 Ti** | **7.5** | **✅** | Turing — compatível |
+> | **RTX 2060, 2060 Super** | **7.5** | **✅** | Turing — compatível |
+> | **RTX 2070, 2070 Super** | **7.5** | **✅** | Turing — compatível |
+> | **RTX 2080, 2080 Super, 2080 Ti** | **7.5** | **✅** | Turing — compatível |
+> | **RTX 3050, 3060, 3060 Ti** | **8.6** | **✅** | Ampere — ótimo custo-benefício |
+> | **RTX 3070, 3070 Ti** | **8.6** | **✅** | Ampere — alta performance |
+> | **RTX 3080, 3080 Ti, 3090, 3090 Ti** | **8.6** | **✅** | Ampere — top de linha |
+> | **RTX 4060, 4060 Ti** | **8.9** | **✅** | Ada Lovelace — eficiente |
+> | **RTX 4070, 4070 Super, 4070 Ti** | **8.9** | **✅** | Ada Lovelace — recomendado |
+> | **RTX 4080, 4080 Super, 4090** | **8.9** | **✅** | Ada Lovelace — máxima performance |
+> | **RTX 5070, 5080, 5090** | **10.0** | **✅** | Blackwell — próxima geração |
+
 
 ---
 

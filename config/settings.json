@@ -3,13 +3,13 @@
     "internet": true,
     "gpu": true,
     "gpu_intensity": 1024,
-    "gpu_name": "NVIDIA GeForce GTX 1050 Ti",
+    "gpu_name": "NVIDIA GeForce GTX 1050 Ti (Incompatível)",
     "gpu_mem": "4.0 GB",
-    "wallet_num": 24,
-    "wallet_addr": "1rSnXMr63jdCuegJFuidJqWxUPV7AtUf7",
+    "wallet_num": 25,
+    "wallet_addr": "15JhYXn6Mx3oF4Y7PcTAv2wVVAuCFFQNiP",
     "wallet_status": 0,
-    "interval_min": "0x800000",
-    "interval_max": "0xffffff",
+    "interval_min": "0x1000000",
+    "interval_max": "0x1ffffff",
     "saldo": "0.00000000",
     "mode": 0,
     "running": true,
@@ -17,5 +17,5 @@
     "both_formats": false,
     "use_checkpoint": true,
     "checkpoint_interval": 30,
-    "engine": "secp"
+    "engine": "bitcrack"
 }

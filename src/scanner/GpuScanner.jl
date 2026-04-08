@@ -112,9 +112,9 @@ function check_compatibility()::Bool
         major = cc.major
         if major < 7
             if !_GPU_COMPAT_MSG_SHOWN[]
-                @warn "GPU incompatível com CUDA 13.0: Compute Capability $(major).$(cc.minor) detectada (mínimo: 7.0). Usando motor SecpOpt."
+                @warn "GPU incompatível com CUDA 13.0: Compute Capability $(major).$(cc.minor) detectada (mínimo: 7.0). Usando motor BitCrack."
                 _GPU_COMPAT_MSG_SHOWN[] = true
-                CFG.engine = :secp
+                CFG.engine = :bitcrack
                 CFG.gpu    = false
             end
             _GPU_COMPAT[] = false
@@ -271,7 +271,7 @@ function gpu_scan_batch(targets_set::Set{Vector{UInt8}}, start_keys::Vector{BigI
             @warn "Erro no motor GPU: $(sprint(showerror, e))"
             _GPU_COMPAT_MSG_SHOWN[] = true
             _GPU_COMPAT[] = false
-            CFG.engine = :secp
+            CFG.engine = :bitcrack
             CFG.gpu    = false
         end
         # Reset de estado

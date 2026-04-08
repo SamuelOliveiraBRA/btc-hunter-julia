@@ -187,6 +187,12 @@ function scan_dashboard(
     end
 
     # ── Workers de busca ──────────────────────────────────
+    # Verificação de compatibilidade GPU antes de lançar workers
+    # Evita que workers entrem no loop GPU e saiam imediatamente com 0 chaves testadas
+    if CFG.engine == :gpu && !GpuScanner.check_compatibility()
+        CFG.engine = :bitcrack  # fallback para BitCrack quando GPU é incompatível
+    end
+
     # Se usar GPU, limitamos a 1 worker de orquestração para não competir com o kernel
     n_gpu_workers = CFG.engine == :gpu ? 1 : CFG.cpus
     n_threads     = n_gpu_workers
