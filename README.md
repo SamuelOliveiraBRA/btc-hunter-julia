@@ -32,7 +32,7 @@ A versão 1.5.0 transforma o BTC Hunter em um sistema de nível **NOC (Network O
 *   **Blocos Estruturados**: Divisores horizontais e títulos dinâmicos para Saldo, Status, Limites de Range e Performance.
 
 ### 🌐 Conectividade e Inteligência
-*   **Real-Time Balance Check**: Integração nativa com a API `blockchain.info` para validar saldos antes do scan (com confirmação obrigatória do usuário).
+*   **Real-Time Balance Check**: Integração nativa com a API `blockchain.info` para validar saldos antes do scan. A consulta é automática se a Internet estiver habilitada nas **Configurações → [2] Internet**. Se estiver desabilitada, a busca inicia direto no modo offline.
 *   **Deep Clear Engine**: Novo sistema de limpeza de buffer que impede a duplicação de imagens em transições rápidas.
 *   **Créditos de Identidade**: Exibição fixa da versão e autoria no cabeçalho do sistema.
 
@@ -177,9 +177,9 @@ julia --threads auto main.jl --puzzle 66 --porcentagem 41 --fim 41
 O modo interativo foi redesenhado para ser um assistente passo-a-passo:
 1.  **Identificação Visual**: O Logo BTC e o Dashboard de Hardware estão sempre visíveis no topo.
 2.  **Assistente de Busca (Wizard)**:
-    *   **Passo 1 (Saldo)**: Pergunta se deseja consultar a internet. Útil para validar se o puzzle não foi resolvido segundos atrás.
-    *   **Passo 2 (Varredura)**: Escolha entre Sequencial, Reverso ou Aleatório.
-    *   **Passo 3 (Range)**: Definição de range por percentual inicial/final ou hex customizado.
+    *   **Passo 1 (Varredura)**: Escolha entre Sequencial, Reverso ou Aleatório.
+    *   **Passo 2 (Range)**: Definição de range por percentual inicial/final ou hex customizado.
+    *   **Saldo**: Consultado automaticamente se **Internet = Ativa** nas Configurações. Sem pergunta extra.
 3.  **Configurações de Hardware**: Ajuste dinâmico de CPUs e monitoramento de drivers CUDA sem precisar sair do programa.
 
 ---
