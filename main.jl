@@ -42,7 +42,7 @@ using .ScannerOrchestrator
 include("src/Benchmark.jl")
 using .BenchmarkModule
 
-using HTTP, JSON, Random, Dates, Printf, CUDA
+using Dates, Printf, Random, JSON, CUDA
 
 # ── Utilitários Adicionais ───────────────────────────────
 hex2big(s) = parse(BigInt, replace(strip(s), "0x" => "", "0X" => ""), base=16)

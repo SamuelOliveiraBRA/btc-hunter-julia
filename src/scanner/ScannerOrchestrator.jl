@@ -13,7 +13,7 @@ using ..BtcUtils
 using ..GpuCrypto
 using ..GpuScanner
 using Base.Threads: @spawn, Atomic, atomic_add!
-using Dates, Printf, Random, JSON, HTTP
+using Dates, Printf, Random, JSON
 
 # Lê as configurações de range (incluindo pubkeys) diretamente do arquivo JSON.
 # Isso garante que nenhuma configuração de carteira fique hardcoded no código.
