@@ -4,6 +4,7 @@ using ..BtcCrypto
 using Distributed
 using Printf
 using Serialization
+using ..BtcUtils
 
 export scan_range, SearchMode, ModeSequential, ModeReverse, ModeRandom
 
@@ -67,15 +68,12 @@ function worker_task(target_hash, start_r, end_r, mode, total_workers, wid)
             priv_hex = lpad(key_hex, 64, "0")
             pub_hex = bytes2hex(pub_bytes)
             
-            println("\n\n" * "="^20 * " FOUND (1) " * "="^20)
-            println("Privat key  : $priv_hex")
-            println("Public key  : $pub_hex")
-            println("="^51)
-            
-            # Salvar em arquivo
-            open("found.txt", "a") do f
-                write(f, "Privat key  : $priv_hex\nPublic key  : $pub_hex\n\n")
-            end
+            # Salvar em arquivo com formato padronizado
+            wif = BtcUtils.generate_wif(curr_key)
+            # Como AddressScanner não tem puzzle_id, usamos 0 ou tentamos inferir.
+            # Aqui passamos 0 para indicar que não é um puzzle específico vindo do orchestrator.
+            addr = BtcCrypto.hash160_to_address(target_hash) 
+            BtcUtils.save_found_key(0, addr, pub_hex, priv_hex, wif)
             exit(0) # Para o processo
         end
         

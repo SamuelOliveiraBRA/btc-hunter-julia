@@ -322,14 +322,7 @@ function pre_scan_menu()
         println("  $(R)Selecione um puzzle primeiro (Opção 2).$(X)"); sleep(1.5); return
     end
 
-    # ── Pergunta de Internet (Regra: Perguntar todas as vezes) ──
-    header("Consulta de Saldo")
-    println("  $(W)Deseja consultar o saldo da carteira na internet?$(X)\n")
-    println("  $(G)[1]$(X)  Sim — consultar blockchain.info")
-    println("  $(R)[2]$(X)  Não — modo offline\n")
-    
-    net_op = UIModule.input("  Opção: ")
-    CFG.internet = (net_op == "1")
+    # ── Consulta de Saldo (usa configuração já definida, sem perguntar novamente) ──
     if CFG.internet
         print("  $(Y)Consultando saldo...$(X)")
         CFG.saldo = BtcUtils.get_balance(CFG.wallet_addr)

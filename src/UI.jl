@@ -5,7 +5,7 @@ using ..ConfigModule: CFG
 
 export G, R, B, Y, M, C, W, DIM, X, BOLD, UL
 export clear, goto, hide_cursor, show_cursor, input, fmt_num, fmt_time, progress_bar
-export box_line, box_top, box_sep, box_bot, box_split, header, splash
+export box_line, box_top, box_sep, box_bot, box_split, header, splash, print_found_key
 
 # ── Cores ANSI ────────────────────────────────────────────
 const G  = "\e[32m";  const R  = "\e[31m";  const B  = "\e[94m"
@@ -67,6 +67,7 @@ end
 function header(subtitle="")
     clear()
     # Logo BTC ASCII Art
+    println()
     println("$(BOLD)$(B)  ██████╗ ████████╗ ██████╗")
     println("  ██╔══██╗╚══██╔══╝██╔════╝")
     println("  ██████╔╝   ██║   ██║")
@@ -125,6 +126,18 @@ end
 function splash()
     header("Iniciando Sistema")
     sleep(0.5)
+end
+
+"""
+    print_found_key(addr, pub, priv, wif)
+Exibe no console os detalhes da chave encontrada com formatação padronizada.
+"""
+function print_found_key(addr::String, pub::String, priv::String, wif::String)
+    println("\n  🏆 $(G)$(BOLD)Chave encontrada!!$(X)")
+    println("  $(W)Carteira:$(X)     $(G)$addr$(X)")
+    println("  $(W)Public Key:$(X)   $(G)$pub$(X)")
+    println("  $(W)Private Key:$(X)  $(G)$priv$(X)")
+    println("  $(W)WIF:$(X)          $(G)$wif$(X)\n")
 end
 
 end # module

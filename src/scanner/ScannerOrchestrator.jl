@@ -3,7 +3,7 @@ module ScannerOrchestrator
 using ..ConfigModule
 using ..UIModule: G, R, B, Y, M, C, W, DIM, X, BOLD, UL, 
                  clear, goto, hide_cursor, show_cursor, input, fmt_num, fmt_time, progress_bar,
-                 box_line, box_top, box_sep, box_bot, box_split, header
+                 box_line, box_top, box_sep, box_bot, box_split, header, print_found_key
 using ..BtcCrypto
 using ..BitCrackEngine
 using ..SecpOptimized
@@ -234,11 +234,11 @@ function scan_dashboard(
                     atomic_add!(keys_done, batch_sz)
                     if mode == 1
                         curr_base += BigInt(batch_sz * n_threads)
-                        curr_base > end_key && (stop[] = true; break)
+                        curr_base > end_key && break
                         BitCrackEngine.next_batch!(state)
                     elseif mode == 2
                         curr_base -= BigInt(batch_sz * n_threads)
-                        curr_base < end_key && (stop[] = true; break)
+                        curr_base < end_key && break
                         state = BitCrackEngine.init_engine(curr_base, target_set, batch_sz, batch_sz * n_threads, CFG.both_formats)
                     else
                         curr_base = BigInt(rand(start_key:rng_max))
@@ -275,10 +275,10 @@ function scan_dashboard(
                     
                     if mode == 1 # Sequencial
                         curr_base += BigInt(actual_scanned)
-                        curr_base > end_key && (stop[] = true; break)
+                        curr_base > end_key && break
                     elseif mode == 2 # Reverso
                         curr_base -= BigInt(actual_scanned)
-                        curr_base < end_key && (stop[] = true; break)
+                        curr_base < end_key && break
                     end
                     
                     last_key[] = curr_base
@@ -328,11 +328,11 @@ function scan_dashboard(
                     atomic_add!(keys_done, batch_sz)
                     if mode == 1
                         curr_base += BigInt(batch_sz * n_threads)
-                        curr_base > end_key && (stop[] = true; break)
+                        curr_base > end_key && break
                         P_base = SecpOptimized.add_points_jacobian(P_base, G_batch_step)
                     elseif mode == 2
                         curr_base -= BigInt(batch_sz * n_threads)
-                        curr_base < end_key && (stop[] = true; break)
+                        curr_base < end_key && break
                         P_base = SecpOptimized.add_points_jacobian(P_base, G_batch_step_neg)
                     else
                         curr_base = BigInt(rand(start_key:rng_max))
@@ -364,26 +364,11 @@ function scan_dashboard(
         pub_hex = bytes2hex(BtcCrypto.priv_to_pub_compressed(pk))
         addr   = found_addr[]
 
-        println("  $(G)$(BOLD)Bitcoin Address:$(X)")
-        println("  $(addr)")
-        println("  $(G)$(BOLD)Public Key:$(X)")
-        println("  $(pub_hex)")
-        println("  $(G)$(BOLD)Private Key:$(X)")
-        println("  $(pk_hex)")
-        println("  $(G)$(BOLD)WIF:$(X)")
-        println("  $(wif)\n")
+        # Exibe resultado no console com formato padronizado
+        print_found_key(addr, pub_hex, pk_hex, wif)
         
-        # Salva resultado com formato BitCrack-like
-        mkpath("outputs")
-        open("outputs/encontradas.txt", "a") do f
-            println(f, "[================= FOUND =================]")
-            println(f, "Puzzle #$puzzle_id")
-            println(f, "Bitcoin Address:\n$addr")
-            println(f, "Public Key:\n$pub_hex")
-            println(f, "Private Key:\n$pk_hex")
-            println(f, "WIF:\n$wif")
-            println(f, "[=========================================]\n")
-        end
+        # Salva resultado com formato padronizado
+        BtcUtils.save_found_key(puzzle_id, addr, pub_hex, pk_hex, wif)
         puzzle_id > 0 && CheckpointManager.delete_checkpoint(puzzle_id)
     else
         # Limpa absolutamente a área da dashboard
