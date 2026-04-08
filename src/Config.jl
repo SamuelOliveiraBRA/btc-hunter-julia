@@ -42,7 +42,7 @@ end
 function load_settings()
     # Padrões iniciais
     default_cfg = Config(
-        Sys.CPU_THREADS, false, false, 2048, "NVIDIA", "---", 0, "", 0,
+        Sys.CPU_THREADS, false, false, 2048, "", "", 0, "", 0,
         "0x0", "0x0", "", 0, true, 2048, false, true, 30, :secp
     )
 

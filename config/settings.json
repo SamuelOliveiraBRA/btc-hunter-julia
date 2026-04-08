@@ -1,10 +1,10 @@
 {
     "cpus": 6,
     "internet": true,
-    "gpu": true,
+    "gpu": false,
     "gpu_intensity": 1024,
-    "gpu_name": "NVIDIA GeForce GTX 1050 Ti (Incompatível)",
-    "gpu_mem": "4.0 GB",
+    "gpu_name": "",
+    "gpu_mem": "",
     "wallet_num": 25,
     "wallet_addr": "15JhYXn6Mx3oF4Y7PcTAv2wVVAuCFFQNiP",
     "wallet_status": 0,

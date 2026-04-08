@@ -5,10 +5,16 @@ using ..UIModule: G, R, B, Y, M, C, W, DIM, X, BOLD, UL,
                  clear, goto, hide_cursor, show_cursor, input, fmt_num, fmt_time, 
                  box_line, box_top, box_sep, box_bot, box_split, header
 using ..ScannerOrchestrator
-using ..BtcCrypto, ..MultiTarget, ..SecpOptimized
-using Dates, Printf, CUDA
+using ..BtcCrypto, ..MultiTarget
+using Dates, Printf, JSON
 
-using ..GpuScanner
+if Sys.isapple()
+    try using Metal catch end
+else
+    try using CUDA catch end
+end
+
+using ..Engines: BitCrackEngine, KeyhunterEngine, SecpEngine
 export run_benchmark, run_gpu_benchmark
 
 """
@@ -20,8 +26,8 @@ function run_gpu_benchmark()
     println("  $(W)Iniciando teste de estresse na placa de vídeo...$(X)")
     println("  $(DIM)Aguarde 10 segundos enquanto medimos a velocidade.$(X)\n")
     
-    # Executa o medidor real do GpuScanner
-    speed = GpuScanner.run_gpu_test(10)
+    # Executa o medidor real do KeyhunterEngine
+    speed = KeyhunterEngine.run_gpu_test(10)
     
     if speed < 0
         println("\n  $(R)$(BOLD)ERRO NO BENCHMARK!$(X)")
@@ -50,7 +56,7 @@ function measure_engine_speed(engine::Symbol, batch::Int, duration::Int)
     test_targets = MultiTarget.build_target_set([test_addr], BtcCrypto.base58_to_hash160)
     
     if engine == :gpu
-        return GpuScanner.run_gpu_test(duration)
+        return KeyhunterEngine.run_gpu_test(duration)
     end
     
     # Range de teste genérico
@@ -116,7 +122,17 @@ function run_benchmark()
     
     # Motores a testar
     target_engines = [:secp]
-    if CUDA.functional(); push!(target_engines, :gpu); end
+    
+    gpu_ready = false
+    try
+        if Sys.isapple()
+            gpu_ready = Main.Metal.functional()
+        else
+            gpu_ready = Main.CUDA.functional()
+        end
+    catch; end
+
+    if gpu_ready; push!(target_engines, :gpu); end
     
     for eng in target_engines
         println("  $(B)Testando Motor:$(X) $(lpad(string(eng), 8)) ...")

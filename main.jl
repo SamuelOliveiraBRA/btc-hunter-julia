@@ -8,6 +8,12 @@ using Pkg; Pkg.activate(".")
 include("src/Config.jl")
 using .ConfigModule
 
+if Sys.isapple()
+    try using Metal catch end
+else
+    try using CUDA catch end
+end
+
 include("src/Base58.jl")
 include("src/BtcCrypto.jl")
 include("src/BtcUtils.jl")
@@ -22,19 +28,18 @@ using .PuzzleData
 using .BloomFilter
 using .MultiTarget
 
-include("src/SecpOptimized.jl")
-using .SecpOptimized
+include("src/SecpOptimized.jl") # Mantido temporariamente para dependências legadas
 include("src/FastField.jl")
 include("src/FastSecp.jl")
-include("src/BitCrackEngine.jl")
-using .FastField, .FastSecp, .BitCrackEngine
-
 include("src/GpuCrypto.jl")
-include("src/scanner/GpuScanner.jl")
-using .GpuCrypto, .GpuScanner
+
+using .FastField, .FastSecp
 
 include("src/UI.jl")
 using .UIModule
+
+include("src/engines/Engines.jl")
+using .Engines
 
 include("src/scanner/ScannerOrchestrator.jl")
 using .ScannerOrchestrator
@@ -277,7 +282,22 @@ function escolher_motor()
     println("  $(W)Escolha o motor de busca padrão:$(X)\n")
     println("  $(G)[1]$(X)  Julia (SecpOpt)  $(DIM)- Estável, nativo$(X)")
     println("  $(Y)[2]$(X)  BitCrack        $(DIM)- Alta performance CPU$(X)")
-    println("  $(B)[3]$(X)  Keyhunter (GPU) $(DIM)- Aceleração CUDA$(X)")
+    
+    # Detecção unificada de GPU (CUDA ou Metal)
+    gpu_ready = false
+    try
+        if Sys.isapple()
+            gpu_ready = Main.Metal.functional()
+        else
+            gpu_ready = Main.CUDA.functional() && !contains(CFG.gpu_name, "Incompatível")
+        end
+    catch
+        gpu_ready = false
+    end
+
+    if gpu_ready
+        println("  $(B)[3]$(X)  Keyhunter (GPU) $(DIM)- Aceleração Hardware$(X)")
+    end
     println("  $(DIM)[0]  Voltar$(X)\n")
     
     m_op = UIModule.input("  Opção: ")
@@ -285,9 +305,9 @@ function escolher_motor()
         CFG.engine = :secp
     elseif m_op == "2"
         CFG.engine = :bitcrack
-    elseif m_op == "3"
+    elseif m_op == "3" && gpu_ready
         CFG.engine = :gpu
-        CFG.gpu = true # Garante que a GPU seja sinalizada como ativa
+        CFG.gpu = true 
     end
     ConfigModule.save_settings(CFG)
 end
@@ -414,6 +434,12 @@ end
 function main()
     mkpath("outputs")
     
+    # Salva preferência do usuário, mas reseta hardware state antes de detectar
+    user_wants_gpu = CFG.gpu
+    CFG.gpu      = false
+    CFG.gpu_name = ""
+    CFG.gpu_mem  = ""
+
     # Detecção automática de GPU
     try
         if CUDA.functional()
@@ -421,10 +447,13 @@ function main()
             CFG.gpu_name = CUDA.name(dev)
             vram_gb = CUDA.totalmem(dev) / (1024^3)
             CFG.gpu_mem = @sprintf("%.1f GB", vram_gb)
-            
+
             # Testa se a placa REALMENTE compila kernels de forma funcional
-            if !GpuScanner.check_compatibility()
-                # Se não for compatível, avisa mas não impede o CPU
+            if GpuScanner.check_compatibility()
+                # Compatível — restaura a preferência do usuário
+                CFG.gpu = user_wants_gpu
+            else
+                # Incompatível — force desabilitado e marca no nome
                 CFG.gpu = false
                 CFG.gpu_name = "$(CFG.gpu_name) (Incompatível)"
             end

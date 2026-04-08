@@ -5,13 +5,10 @@ using ..UIModule: G, R, B, Y, M, C, W, DIM, X, BOLD, UL,
                  clear, goto, hide_cursor, show_cursor, input, fmt_num, fmt_time, progress_bar,
                  box_line, box_top, box_sep, box_bot, box_split, header, print_found_key
 using ..BtcCrypto
-using ..BitCrackEngine
-using ..SecpOptimized
 using ..CheckpointManager
 using ..MultiTarget
 using ..BtcUtils
-using ..GpuCrypto
-using ..GpuScanner
+using ..Engines: BitCrackEngine, KeyhunterEngine, SecpEngine
 using Base.Threads: @spawn, Atomic, atomic_add!
 using Dates, Printf, Random, JSON
 
@@ -80,10 +77,10 @@ function scan_dashboard(
         println(box_line(" $(DIM)Compilando CUDA Kernel (JIT)... Aguarde$(X) "))
         println(box_bot())
         try
-            GpuScanner.gpu_scan_batch(target_set.hashes, [BigInt(1)], 8192)
-            GpuScanner.GPU_STATE[:d_points] = nothing
-            GpuScanner.GPU_STATE[:d_found] = nothing
-            GpuScanner.GPU_STATE[:last_range] = nothing
+            KeyhunterEngine.gpu_scan_batch(target_set.hashes, [BigInt(1)], 8192)
+            KeyhunterEngine.GPU_STATE[:d_points] = nothing
+            KeyhunterEngine.GPU_STATE[:d_found] = nothing
+            KeyhunterEngine.GPU_STATE[:last_range] = nothing
         catch
         end
     end
@@ -189,7 +186,7 @@ function scan_dashboard(
     # ── Workers de busca ──────────────────────────────────
     # Verificação de compatibilidade GPU antes de lançar workers
     # Evita que workers entrem no loop GPU e saiam imediatamente com 0 chaves testadas
-    if CFG.engine == :gpu && !GpuScanner.check_compatibility()
+    if CFG.engine == :gpu && !KeyhunterEngine.check_compatibility()
         CFG.engine = :bitcrack  # fallback para BitCrack quando GPU é incompatível
     end
 
@@ -199,9 +196,9 @@ function scan_dashboard(
     safe_rng_max  = rng_max - BigInt(batch_sz * n_threads)
 
     # Pré-cálculo dos passos
-    G_step           = SecpOptimized.scalar_mul(BigInt(n_threads), SecpOptimized.G_J)
-    G_batch_step     = SecpOptimized.scalar_mul(BigInt(batch_sz * n_threads), SecpOptimized.G_J)
-    G_batch_step_neg = SecpOptimized.negate_point_jacobian(G_batch_step)
+    G_step           = SecpEngine.scalar_mul(BigInt(n_threads), SecpEngine.G_J)
+    G_batch_step     = SecpEngine.scalar_mul(BigInt(batch_sz * n_threads), SecpEngine.G_J)
+    G_batch_step_neg = SecpEngine.negate_point_jacobian(G_batch_step)
 
     worker_tasks = map(1:n_threads) do wid
         @spawn begin
@@ -259,7 +256,7 @@ function scan_dashboard(
                 
                 while !stop[]
                     # Passamos a carga total pesada (ex: milhões de chaves) para a GPU de uma vez só!
-                    res_idx = GpuScanner.gpu_scan_batch(target_set.hashes, [curr_base], gpu_batch)
+                    res_idx = KeyhunterEngine.gpu_scan_batch(target_set.hashes, [curr_base], gpu_batch)
                     
                     if res_idx == -1
                         # GPU incompatível detectada — fallback silencioso para SecpOpt
@@ -267,7 +264,7 @@ function scan_dashboard(
                     elseif res_idx > 0
                         found_key[]  = curr_base + BigInt(res_idx - 1)
                         # Conta o batch inteiro para refletir o throughput real da GPU
-                        actual_scanned = GpuScanner.GPU_STATE[:last_batch]
+                        actual_scanned = KeyhunterEngine.GPU_STATE[:last_batch]
                         atomic_add!(keys_done, max(Int64(actual_scanned), Int64(res_idx)))
                         # Deriva o endereço final para exibição
                         h_found = BtcCrypto.hash160(BtcCrypto.priv_to_pub_compressed(found_key[]))
@@ -276,7 +273,7 @@ function scan_dashboard(
                     end
                     
                     # Na prática, extraímos exatamente quantas chaves foram checadas
-                    actual_scanned = GpuScanner.GPU_STATE[:last_batch]
+                    actual_scanned = KeyhunterEngine.GPU_STATE[:last_batch]
                     atomic_add!(keys_done, actual_scanned)
                     
                     if mode == 1 # Sequencial
@@ -298,18 +295,18 @@ function scan_dashboard(
                     yield()
                 end
             else
-                # Motor SecpOptimized (padrão)
-                P_base = SecpOptimized.scalar_mul(curr_base, SecpOptimized.G_J)
-                batch_points = Vector{SecpOptimized.PointJacobian}(undef, batch_sz)
+                # Motor SecpEngine (padrão)
+                P_base = SecpEngine.scalar_mul(curr_base, SecpEngine.G_J)
+                batch_points = Vector{SecpEngine.PointJacobian}(undef, batch_sz)
 
                 while !stop[]
                     P_temp = P_base
                     for i in 1:batch_sz
                         batch_points[i] = P_temp
-                        P_temp = SecpOptimized.add_points_jacobian(P_temp, G_step)
+                        P_temp = SecpEngine.add_points_jacobian(P_temp, G_step)
                     end
 
-                    affine_pts = SecpOptimized.batch_normalize(batch_points)
+                    affine_pts = SecpEngine.batch_normalize(batch_points)
                     pubs_comp = BtcCrypto.serialize_compressed_batch(affine_pts)
 
                     for i in 1:batch_sz
@@ -335,14 +332,14 @@ function scan_dashboard(
                     if mode == 1
                         curr_base += BigInt(batch_sz * n_threads)
                         curr_base > end_key && break
-                        P_base = SecpOptimized.add_points_jacobian(P_base, G_batch_step)
+                        P_base = SecpEngine.add_points_jacobian(P_base, G_batch_step)
                     elseif mode == 2
                         curr_base -= BigInt(batch_sz * n_threads)
                         curr_base < end_key && break
-                        P_base = SecpOptimized.add_points_jacobian(P_base, G_batch_step_neg)
+                        P_base = SecpEngine.add_points_jacobian(P_base, G_batch_step_neg)
                     else
                         curr_base = BigInt(rand(start_key:rng_max))
-                        P_base = SecpOptimized.scalar_mul(curr_base, SecpOptimized.G_J)
+                        P_base = SecpEngine.scalar_mul(curr_base, SecpEngine.G_J)
                     end
                     last_key[] = curr_base
                     yield()

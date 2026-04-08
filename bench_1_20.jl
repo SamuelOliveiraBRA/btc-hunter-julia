@@ -7,7 +7,7 @@ include("src/Base58.jl")
 include("src/BtcCrypto.jl")
 include("src/CheckpointManager.jl")
 include("src/MultiTarget.jl")
-include("btc_utils.jl")
+include("src/BtcUtils.jl")
 include("src/SecpOptimized.jl")
 include("src/FastField.jl")
 include("src/FastSecp.jl")
@@ -52,8 +52,8 @@ end
 
 function run_bitcrack_test(range_min::BigInt, range_max::BigInt, target_hash::Vector{UInt8})
     batch_size = 512
-    # Benchmark usa false por padrão para velocidade pura
-    state = BitCrackEngine.init_engine(range_min, target_hash, batch_size, batch_size, false)
+    target_set = build_target_set([BtcUtils.hash160_to_address(target_hash)], BtcCrypto.base58_to_hash160)
+    state = BitCrackEngine.init_engine(range_min, target_set, batch_size, batch_size, false)
     
     t0 = time()
     keys_tested = 0
@@ -62,7 +62,7 @@ function run_bitcrack_test(range_min::BigInt, range_max::BigInt, target_hash::Ve
     while curr <= range_max
         remain = min(batch_size, range_max - curr + 1)
         
-        idx = BitCrackEngine.check_batch(state)
+        idx, h_f = BitCrackEngine.check_batch(state)
         keys_tested += remain
         
         if idx > 0 && idx <= remain

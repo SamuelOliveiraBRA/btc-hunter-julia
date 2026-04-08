@@ -13,6 +13,18 @@ const Y  = "\e[33m";  const M  = "\e[35m";  const C  = "\e[96m"
 const W  = "\e[97m";  const DIM = "\e[2m";  const X  = "\e[0m"
 const BOLD = "\e[1m"; const UL = "\e[4m"
 
+# ── Info Hardware ──────────────────────────────────────────
+function get_hw_info()
+    os = Sys.isapple() ? "macOS" : Sys.iswindows() ? "Windows" : "Linux"
+    cpus = Sys.cpu_info()
+    model = isempty(cpus) ? "Desconhecido" : cpus[1].model
+    speed = isempty(cpus) ? 0 : cpus[1].speed # MHz
+    ram = round(Sys.total_memory() / 1024^3, digits=1)
+    
+    speed_s = speed > 1000 ? @sprintf("%.2f GHz", speed/1000) : "$speed MHz"
+    return (os=os, model=model, speed=speed_s, ram="$(ram) GB")
+end
+
 # ── Utilitários ───────────────────────────────────────────
 ansi(s) = replace(s, r"\e\[[0-9;]*m" => "")
 # Limpa tela, limpa scrollback e move cursor para o topo (1,1)
@@ -75,7 +87,7 @@ function header(subtitle="")
     println("  ██████╔╝   ██║   ╚██████╗")
     println("  ╚═════╝    ╚═╝    ╚═════╝$(X)\n")
 
-    cpu_bar = G * ("■" ^ CFG.cpus) * DIM * ("□" ^ (Sys.CPU_THREADS - CFG.cpus)) * X * " $(DIM)$(CFG.cpus)/$(Sys.CPU_THREADS)$(X)"
+    cpu_bar = G * ("■" ^ max(0, CFG.cpus)) * DIM * ("□" ^ max(0, Sys.CPU_THREADS - CFG.cpus)) * X * " $(DIM)$(CFG.cpus)/$(Sys.CPU_THREADS)$(X)"
     gpu_bar = CFG.gpu ? (C * ("■" ^ (clamp(CFG.gpu_intensity ÷ 256, 1, 8))) * DIM * ("□" ^ (max(0, 8 - (CFG.gpu_intensity ÷ 256)))) * X * " $(DIM)$(CFG.gpu_intensity)$(X)") : (DIM * "Desativada" * X)
     inet_s  = CFG.internet ? G*"● Ativa"*X : DIM*"○ Desativada"*X
     fmt_s   = CFG.both_formats ? C*"C+U"*X : G*"Comprimido"*X
@@ -87,13 +99,19 @@ function header(subtitle="")
     elseif CFG.engine == :gpu; eng_s = C*"CUDA/GPU"*X
     else; eng_s = G*"SecpOpt"*X
     end
+    hw = get_hw_info()
     println(box_split("$(Y)v1.5.0$(X)  Julia Edition", "$(B)Dev. Samuel Oliveira$(X)"))
     println(box_sep())
-    if !isempty(CFG.gpu_name) && CFG.gpu_name != "NVIDIA"
-        println(box_line("$(DIM)GPU:$(X) $(C)$(CFG.gpu_name)$(X) $(DIM)($(CFG.gpu_mem))$(X)"))
+    println(box_split("$(DIM)SISTEMA:$(X) $(W)$(hw.os) @ $(hw.speed)$(X)", "$(DIM)RAM:$(X) $(W)$(hw.ram)$(X)"))
+    println(box_sep())
+    
+    if CFG.gpu && !isempty(CFG.gpu_name)
+        println(box_line("$(DIM)GPU:    $(X) $(C)$(CFG.gpu_name)$(X) $(DIM)($(CFG.gpu_mem))$(X)"))
         println(box_sep())
+        println(box_split("$(W)CPUs$(X)  $cpu_bar", "$(W)GPU$(X)   $gpu_bar"))
+    else
+        println(box_line("$(W)CPUs$(X)  $cpu_bar"))
     end
-    println(box_split("$(W)CPUs$(X)  $cpu_bar", "$(W)GPU$(X)   $gpu_bar"))
     b_size = CFG.engine == :gpu ? (CFG.gpu_intensity * 1024) : CFG.batch_size
     println(box_split("$(W)Buffer$(X)  $(C)$(fmt_num(b_size))$(X)", "$(W)Internet$(X)  $inet_s"))
     println(box_split("$(W)Motor$(X)  $eng_s", "$(W)Formato$(X)  $fmt_s"))

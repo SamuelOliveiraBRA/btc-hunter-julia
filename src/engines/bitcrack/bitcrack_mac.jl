@@ -12,7 +12,7 @@ module BitCrackEngine
 using ..FastField
 using ..FastSecp
 using ..BtcCrypto
-using ..SecpOptimized
+using ..SecpEngine
 using ..MultiTarget
 
 export BitCrackState, init_engine, next_batch!, check_batch
@@ -42,21 +42,21 @@ end
 function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, stride_size::Int, both_formats::Bool=false)::BitCrackState
     # 1. Calcular pontos iniciais em Jacobiana (bootstrap)
     points_j = Vector{PointJacobian}(undef, batch_size)
-    curr_j = SecpOptimized.scalar_mul(start_key, SecpOptimized.G_J)
-    step_j = SecpOptimized.G_J
+    curr_j = SecpEngine.scalar_mul(start_key, SecpEngine.G_J)
+    step_j = SecpEngine.G_J
     
     for i in 1:batch_size
         points_j[i] = curr_j
-        curr_j = SecpOptimized.add_points_jacobian(curr_j, step_j)
+        curr_j = SecpEngine.add_points_jacobian(curr_j, step_j)
     end
     
     # 2. Normalizar lote para Afim (uma única inversão pesada aqui)
-    affine_tuples = SecpOptimized.batch_normalize(points_j)
+    affine_tuples = SecpEngine.batch_normalize(points_j)
     points_a = [PointA(FE256(t[1]), FE256(t[2])) for t in affine_tuples]
     
     # 3. Preparar o Stride (S) em Afim
-    stride_j = SecpOptimized.scalar_mul(BigInt(stride_size), SecpOptimized.G_J)
-    sx, sy = SecpOptimized.jacobian_to_affine(stride_j)
+    stride_j = SecpEngine.scalar_mul(BigInt(stride_size), SecpEngine.G_J)
+    sx, sy = SecpEngine.jacobian_to_affine(stride_j)
     stride_a = PointA(FE256(sx), FE256(sy))
     
     # buffers
@@ -135,8 +135,8 @@ function check_batch(state::BitCrackState)::Tuple{Int, Vector{UInt8}}
         
         # 1. Comprimido (C)
         # Coordenada X já é affine.x
-        BtcCrypto.big_to_32bytes!(to_big(pt.x), state.pub_buf, 2)
-        state.pub_buf[1] = iseven(to_big(pt.y)) ? 0x02 : 0x03
+        FastField.write_32bytes!(state.pub_buf, 2, pt.x)
+        state.pub_buf[1] = iseven(pt.y) ? 0x02 : 0x03
         
         BtcCrypto.hash160!(view(state.pub_buf, 1:33), state.h160_buf, state.sha_buf)
         if check_hit(state.targets, state.h160_buf)
@@ -146,7 +146,7 @@ function check_batch(state::BitCrackState)::Tuple{Int, Vector{UInt8}}
         # 2. Não-comprimido (U) - Opcional
         if state.both_formats
             state.pub_buf[1] = 0x04
-            BtcCrypto.big_to_32bytes!(to_big(pt.y), state.pub_buf, 34)
+            FastField.write_32bytes!(state.pub_buf, 34, pt.y)
             
             BtcCrypto.hash160!(view(state.pub_buf, 1:65), state.h160_buf, state.sha_buf)
             if check_hit(state.targets, state.h160_buf)
