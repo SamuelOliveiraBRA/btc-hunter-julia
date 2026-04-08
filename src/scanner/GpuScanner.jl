@@ -92,10 +92,38 @@ function scan_kernel_pure(points, jump_point, targets, found, steps)
     return nothing
 end
 
+# Cache de compatibilidade — verificado apenas uma vez por sessão
+const _GPU_COMPAT = Ref{Union{Bool,Nothing}}(nothing)
+const _GPU_COMPAT_MSG_SHOWN = Ref{Bool}(false)
+
 function check_compatibility()::Bool
+    # Usa cache para não repetir a verificação a cada ciclo
+    if !isnothing(_GPU_COMPAT[])
+        return _GPU_COMPAT[]
+    end
     try
-        return CUDA.functional()
+        if !CUDA.functional()
+            _GPU_COMPAT[] = false
+            return false
+        end
+        # Verifica Compute Capability mínima (CUDA 13.0 exige >= 7.0)
+        dev = CUDA.device()
+        cc = CUDA.capability(dev)
+        major = cc.major
+        if major < 7
+            if !_GPU_COMPAT_MSG_SHOWN[]
+                @warn "GPU incompatível com CUDA 13.0: Compute Capability $(major).$(cc.minor) detectada (mínimo: 7.0). Usando motor SecpOpt."
+                _GPU_COMPAT_MSG_SHOWN[] = true
+                CFG.engine = :secp
+                CFG.gpu    = false
+            end
+            _GPU_COMPAT[] = false
+            return false
+        end
+        _GPU_COMPAT[] = true
+        return true
     catch
+        _GPU_COMPAT[] = false
         return false
     end
 end
@@ -238,11 +266,18 @@ function gpu_scan_batch(targets_set::Set{Vector{UInt8}}, start_keys::Vector{BigI
         
         return 0
     catch e
-        @warn "Erro no motor GPU: $(sprint(showerror, e))"
-        # Reset total em caso de pânico para tentar recuperar o driver
+        # Exibe o warning apenas uma vez, depois desativa GPU silenciosamente
+        if !_GPU_COMPAT_MSG_SHOWN[]
+            @warn "Erro no motor GPU: $(sprint(showerror, e))"
+            _GPU_COMPAT_MSG_SHOWN[] = true
+            _GPU_COMPAT[] = false
+            CFG.engine = :secp
+            CFG.gpu    = false
+        end
+        # Reset de estado
         GPU_STATE[:d_points] = nothing
-        GPU_STATE[:d_found] = nothing
-        return 0
+        GPU_STATE[:d_found]  = nothing
+        return -1  # Sinaliza fallback permanente
     end
 end
 

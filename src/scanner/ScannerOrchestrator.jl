@@ -256,8 +256,8 @@ function scan_dashboard(
                     res_idx = GpuScanner.gpu_scan_batch(target_set.hashes, [curr_base], gpu_batch)
                     
                     if res_idx == -1
-                        println("\n$(R)Erro: Falha na GPU. Abortando.$(X)")
-                        stop[] = true; break
+                        # GPU incompatível detectada — fallback silencioso para SecpOpt
+                        break  # Sai do loop GPU; o worker encerra e o orchestrator usará SecpOpt
                     elseif res_idx > 0
                         found_key[]  = curr_base + BigInt(res_idx - 1)
                         # Conta o batch inteiro para refletir o throughput real da GPU
