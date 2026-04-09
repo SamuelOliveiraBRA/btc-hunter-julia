@@ -414,18 +414,26 @@ function main_menu()
     ranges = load_ranges()
     while true
         header("Menu Principal")
-        println("  $(G)[1]$(X)  Escolher motor de busca")
+        if CFG.gpu
+            println("  $(G)[1]$(X)  Escolher motor de busca")
+        end
         println("  $(Y)[2]$(X)  Escolher Puzzle")
         println("  $(B)[3]$(X)  Iniciar Busca")
         println("  $(C)[4]$(X)  Configurações")
         println("  $(DIM)[0]  Sair$(X)")
         
         op = UIModule.input("\n  Opção: ")
-        if op == "1"; escolher_motor()
-        elseif op == "2"; escolher_carteira(ranges)
-        elseif op == "3"; pre_scan_menu()
-        elseif op == "4"; config_menu()
-        elseif op == "0"; show_cursor(); exit(0)
+        if op == "1" && CFG.gpu
+            escolher_motor()
+        elseif op == "2"
+            escolher_carteira(ranges)
+        elseif op == "3"
+            pre_scan_menu()
+        elseif op == "4"
+            config_menu()
+        elseif op == "0"
+            show_cursor()
+            exit(0)
         end
     end
 end

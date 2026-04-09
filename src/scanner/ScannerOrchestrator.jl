@@ -191,13 +191,17 @@ function scan_dashboard(
     end
 
     # Se usar GPU, limitamos a 1 worker de orquestração para não competir com o kernel
-    n_gpu_workers = CFG.engine == :gpu ? 1 : CFG.cpus
-    n_threads     = n_gpu_workers
+    n_threads     = CFG.engine == :gpu ? 1 : min(CFG.cpus, Threads.nthreads())
     safe_rng_max  = rng_max - BigInt(batch_sz * n_threads)
 
     # Pré-cálculo dos passos
+    # Para o BitCrack (Affine), o stride é um ponto Afim pré-calculado no init_engine.
+    # Para o SecpOpt (Jacobian), usamos passos Jacobianos.
     G_step           = SecpEngine.scalar_mul(BigInt(n_threads), SecpEngine.G_J)
-    G_batch_step     = SecpEngine.scalar_mul(BigInt(batch_sz * n_threads), SecpEngine.G_J)
+    
+    # Stride para o modo reverso (passo negativo)
+    stride_val = mode == 2 ? -BigInt(batch_sz * n_threads) : BigInt(batch_sz * n_threads)
+    G_batch_step     = SecpEngine.scalar_mul(stride_val, SecpEngine.G_J)
     G_batch_step_neg = SecpEngine.negate_point_jacobian(G_batch_step)
 
     worker_tasks = map(1:n_threads) do wid
@@ -225,7 +229,9 @@ function scan_dashboard(
 
             if CFG.engine == :bitcrack
                 # Motor BitCrackEngine (Multi-target nativo)
-                state = BitCrackEngine.init_engine(curr_base, target_set, batch_sz, batch_sz * n_threads, CFG.both_formats)
+                # No modo reverso (2), inicializamos com o passo negativo
+                stride_for_engine = mode == 2 ? -BigInt(batch_sz * n_threads) : BigInt(batch_sz * n_threads)
+                state = BitCrackEngine.init_engine(curr_base, target_set, batch_sz, stride_for_engine, CFG.both_formats)
 
                 while !stop[]
                     idx, h_f = BitCrackEngine.check_batch(state)
@@ -235,14 +241,14 @@ function scan_dashboard(
                         stop[] = true; break
                     end
                     atomic_add!(keys_done, batch_sz)
-                    if mode == 1
-                        curr_base += BigInt(batch_sz * n_threads)
-                        curr_base > end_key && break
+                    
+                    if mode == 1 || mode == 2
+                        # No modo 1 ou 2, usamos o next_batch! que já tem o stride configurado no state
                         BitCrackEngine.next_batch!(state)
-                    elseif mode == 2
-                        curr_base -= BigInt(batch_sz * n_threads)
-                        curr_base < end_key && break
-                        state = BitCrackEngine.init_engine(curr_base, target_set, batch_sz, batch_sz * n_threads, CFG.both_formats)
+                        curr_base += stride_for_engine
+                        
+                        if mode == 1 && curr_base > end_key; break; end
+                        if mode == 2 && curr_base < end_key; break; end
                     else
                         curr_base = BigInt(rand(start_key:rng_max))
                         state = BitCrackEngine.init_engine(curr_base, target_set, batch_sz, batch_sz * n_threads, CFG.both_formats)
