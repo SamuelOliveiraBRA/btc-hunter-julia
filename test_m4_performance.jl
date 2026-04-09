@@ -51,7 +51,7 @@ function run_single_test(threads, buffer)
         Threads.@spawn begin
             curr_base = start_key + BigInt((wid - 1) * batch_sz)
             stride = Int(batch_sz * n_threads)
-            state = Engines.BitCrackEngine.init_engine(curr_base, target_set, batch_sz, stride, false)
+            state = Engines.BitCrackEngine.init_engine(curr_base, target_set, batch_sz, false, stride)
             
             local_count = 0
             while !stop_signal[]

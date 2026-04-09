@@ -57,7 +57,7 @@ function run_advanced_test(workers_count, buffer_size, sim_ui_load::Bool)
         Threads.@spawn begin
             curr = start_key + BigInt((wid - 1) * buffer_size)
             stride = Int(buffer_size * workers_count)
-            state = Engines.BitCrackEngine.init_engine(curr, target_set, buffer_size, stride, false)
+            state = Engines.BitCrackEngine.init_engine(curr, target_set, buffer_size, false, stride)
             
             local_c = 0
             while !stop[]

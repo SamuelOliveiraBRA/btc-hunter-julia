@@ -1,4 +1,4 @@
-module BitCrackEngine
+module BitCrackLegacy
 
 # ═══════════════════════════════════════════════════════════════════
 # BitCrackEngine.jl — Motor de varredura Afim em Lote (ALTA PERFORMANCE)
@@ -39,7 +39,7 @@ struct BitCrackState
     h160_buf     :: Vector{UInt8}
 end
 
-function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, stride_size::Int, both_formats::Bool=false)::BitCrackState
+function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, both_formats::Bool=false, stride_size::Int=batch_size)::BitCrackState
     # 1. Calcular pontos iniciais em Jacobiana (bootstrap)
     points_j = Vector{PointJacobian}(undef, batch_size)
     curr_j = SecpOptimized.scalar_mul(start_key, SecpOptimized.G_J)

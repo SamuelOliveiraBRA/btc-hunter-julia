@@ -7,10 +7,7 @@ using JSON
 mutable struct Config
     cpus::Int
     internet::Bool
-    gpu::Bool
-    gpu_intensity::Int
-    gpu_name::String
-    gpu_mem::String
+
     wallet_num::Int
     wallet_addr::String
     wallet_status::Int
@@ -24,6 +21,7 @@ mutable struct Config
     use_checkpoint::Bool
     checkpoint_interval::Int
     engine::Symbol
+    gpu::Bool
 end
 
 const SETTINGS_FILE = "config/settings.json"
@@ -42,8 +40,8 @@ end
 function load_settings()
     # Padrões iniciais
     default_cfg = Config(
-        Sys.CPU_THREADS, false, false, 2048, "", "", 0, "", 0,
-        "0x0", "0x0", "", 0, true, 2048, false, true, 30, :secp
+        10, false, 0, "", 0,
+        "0x0", "0x0", "", 0, true, 16384, false, true, 30, :bitcrack, false
     )
 
     if !isfile(SETTINGS_FILE)

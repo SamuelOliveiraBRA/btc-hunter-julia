@@ -4,7 +4,7 @@ module Engines
 # Engines.jl — Despachante de Motores Multi-plataforma
 # ═══════════════════════════════════════════════════════════════════
 
-export BitCrackEngine, KeyhunterEngine, SecpEngine
+export BitCrackEngine, BitCrackLegacy, BSGSEngine, GpuEngine
 
 # 1. Detectar Plataforma
 const IS_MAC     = Sys.isapple()
@@ -19,20 +19,18 @@ using ..BtcCrypto
 using ..CheckpointManager
 using ..MultiTarget
 using ..BtcUtils
+using ..SecpOptimized
+using ..GpuCrypto
 
-# 2. Carregar Motores Específicos
-if IS_MAC
-    include("secp/secp_mac.jl")
-    include("bitcrack/bitcrack_mac.jl")
-    include("keyhunter/keyhunter_mac.jl")
-elseif IS_WINDOWS
-    include("secp/secp_win.jl")
-    include("bitcrack/bitcrack_win.jl")
-    include("keyhunter/keyhunter_win.jl")
-else # Linux ou outro
-    include("secp/secp_linux.jl")
-    include("bitcrack/bitcrack_linux.jl")
-    include("keyhunter/keyhunter_linux.jl")
-end
+# 3. Carregar Motores Específicos
+# Motor Nativo Otimizado (M4/Mac / CPU Principal)
+include("bitcrack/bitcrack_mac.jl")
+
+# Motores Originais / Cross-platform
+include("../BitCrackEngine.jl")     # Renomeado internamente para BitCrackLegacy
+include("../BSGSEngine.jl")
+include("../scanner/GpuScanner.jl") # Keyhunter
+
+const GpuEngine = GpuScanner # Alias amigável
 
 end # module

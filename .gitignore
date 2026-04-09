@@ -14,6 +14,12 @@ outputs/
 encontradas.txt
 found.txt
 
+# Ignorar configurações locais (contém endereços de carteiras pessoais)
+config/settings.json
+
+# Ignorar arquivos de checkpoint (dados de sessão)
+data/checkpoint.json
+
 # Ignorar logs e arquivos de teste
 *.log
 test_output.txt

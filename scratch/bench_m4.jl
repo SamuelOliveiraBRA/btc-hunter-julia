@@ -1,8 +1,6 @@
-
-using Pkg; Pkg.activate(".")
+using Pkg; Pkg.activate(joinpath(@__DIR__, ".."))
 push!(LOAD_PATH, joinpath(@__DIR__, "..", "src"))
 
-# Carregamento correto baseado no main.jl
 include("../src/Config.jl")
 include("../src/Base58.jl")
 include("../src/BtcCrypto.jl")
@@ -11,93 +9,94 @@ include("../src/CheckpointManager.jl")
 include("../src/PuzzleData.jl")
 include("../src/BloomFilter.jl")
 include("../src/MultiTarget.jl")
+include("../src/SecpOptimized.jl")
+include("../src/GpuCrypto.jl")
 include("../src/FastField.jl")
 include("../src/FastSecp.jl")
 include("../src/engines/Engines.jl")
-include("../src/scanner/ScannerOrchestrator.jl")
-include("../src/UI.jl")
 
 using .ConfigModule
-using .ScannerOrchestrator
 using .Engines
 using .BtcCrypto
 using .MultiTarget
 using Dates
+using Printf
 
-function auto_bench()
-    println("--- BENCHMARK AUTOMÁTICO (M4 OPTIMIZED) ---")
+function bench_with_verification()
+    println("=================================================================")
+    println(" BENCHMARK + VERIFICAÇÃO DE CHAVE (Teste de Estabilidade)")
+    println("=================================================================")
     
-    # Configuração ideal para M4
-    CFG = ConfigModule.load_settings()
-    CFG.cpus = 4
-    CFG.batch_size = 16384
-    CFG.engine = :bitcrack
+    # Carteira 20
+    target_addr = "1HsMJxNiV7TLxmoF6uJNkydxPFDog4NQum"
+    known_priv  = "00000000000000000000000000000000000000000000000000000000000d2c55"
     
-    target_addr = "11p6T996UqVpDAbN6U6AnG89A4tQ5w5m7" # Exemplo puzzle #1
+    # Vamos iniciar exatamente 800 mil chaves antes para evitar start base negativo
+    distance_keys = 800_000
+    expected_hex_key = parse(BigInt, known_priv, base=16)
+    start_key = expected_hex_key - distance_keys
     
-    println("Config: Threads=$(CFG.cpus), Buffer=$(CFG.batch_size)")
-    println("Iniciando benchmark de 20 segundos...")
-    
-    stop_signal = Ref(false)
-    keys_done = Threads.Atomic{Int64}(0)
-    
-    # Setup do motor
     target_set = MultiTarget.build_target_set([target_addr], BtcCrypto.base58_to_hash160)
     
-    n_threads = CFG.cpus
-    batch_sz = CFG.batch_size
-    start_key = BigInt(rand(0x10000000:0x1fffffff))
+    batch_sz = 10_000
+    stride = batch_sz
     
-    t_start = now()
+    println("→ Alvo:         ", target_addr)
+    println("→ Start Key:    ", string(start_key, base=16))
+    println("→ Expected Key: ", string(expected_hex_key, base=16))
+    println("→ Distância:    $(distance_keys) chaves")
+    println("\nIniciando Engine BitCrack (Batch = $batch_sz)...")
     
-    workers = map(1:n_threads) do wid
-        Threads.@spawn begin
-            curr_base = start_key + BigInt((wid - 1) * batch_sz)
-            stride = Int(batch_sz * n_threads)
-            # Acessando o motor via Engines
-            state = Engines.BitCrackEngine.init_engine(curr_base, target_set, batch_sz, stride, false)
-            
-            local_count = 0
-            while !stop_signal[]
-                idx, h = Engines.BitCrackEngine.check_batch(state)
-                local_count += batch_sz
-                if local_count >= 128 * batch_sz
-                    Threads.atomic_add!(keys_done, local_count)
-                    local_count = 0
-                end
-                Engines.BitCrackEngine.next_batch!(state)
-            end
-            Threads.atomic_add!(keys_done, local_count)
+    state = Engines.BitCrackEngine.init_engine(start_key, target_set, batch_sz, stride, false)
+    
+    found = false
+    found_idx = 0
+    found_batch = 0
+    
+    max_batches = ceil(Int, distance_keys / batch_sz) + 10 # Sobra de garantia
+    
+    t_start = time()
+    t_last = t_start
+    total_processed = 0
+    
+    for b in 1:max_batches
+        idx, h_f = Engines.BitCrackEngine.check_batch(state)
+        if idx > 0
+            found = true
+            found_idx = idx
+            found_batch = b
+            break
+        end
+        total_processed += batch_sz
+        Engines.BitCrackEngine.next_batch!(state)
+        
+        # Log a cada 50 batches
+        if b % 50 == 0
+            curr_t = time()
+            elps = curr_t - t_last
+            spd = (50 * batch_sz) / elps
+            @printf("  Batch %4d | %d chaves | Speed: %.2f K/s\n", b, total_processed, spd/1000)
+            t_last = curr_t
         end
     end
+    t_end = time()
+    elapsed = t_end - t_start
     
-    # Monitorar por 20 segundos
-    for i in 1:20
-        sleep(1)
-        elapsed = (now() - t_start).value / 1000.0
-        cur_keys = keys_done[]
-        speed = cur_keys / elapsed / 1e6
-        print("\rTempo: $(i)s | Velocidade: $(round(speed, digits=2)) M/s")
-    end
-    
-    stop_signal[] = true
-    foreach(wait, workers)
-    
-    t_end = now()
-    total_keys = keys_done[]
-    elapsed = (t_end - t_start).value / 1000.0
-    final_speed = total_keys / elapsed / 1e6
-    
-    println("\n\n--- RESULTADO FINAL ---")
-    println("Total de Chaves: $(total_keys)")
-    println("Tempo: $(round(elapsed, digits=2)) s")
-    println("Velocidade Média: $(round(final_speed, digits=2)) M/s")
-    
-    if final_speed > 4.0
-        println("SUCESSO: Meta de 4M/s atingida!")
+    println("\n=================================================================")
+    if found
+        actual_key = start_key + ((found_batch - 1) * batch_sz) + (found_idx - 1)
+        println("✅ SUCESSO! CHAVE ENCONTRADA")
+        println("Tempo Total : $(round(elapsed, digits=2)) s")
+        println("Veloc. Média: $(round((total_processed + found_idx) / elapsed / 1000, digits=2)) K/s")
+        if actual_key == expected_hex_key
+            println("✅ CHAVE EXATA COMBINA: ", string(expected_hex_key, base=16))
+        else
+            println("❌ ERRO GRAVE! Hash bateu mas a chave deu: ", string(actual_key, base=16))
+        end
     else
-        println("ALERTA: Ainda abaixo da meta. Analisando gargalos...")
+        println("❌ FALHA! Varreu $max_batches batches ($total_processed chaves) e NÃO ACHOU a chave.")
     end
+    println("=================================================================")
 end
 
-auto_bench()
+bench_with_verification()

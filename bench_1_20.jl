@@ -53,7 +53,7 @@ end
 function run_bitcrack_test(range_min::BigInt, range_max::BigInt, target_hash::Vector{UInt8})
     batch_size = 512
     target_set = build_target_set([BtcUtils.hash160_to_address(target_hash)], BtcCrypto.base58_to_hash160)
-    state = BitCrackEngine.init_engine(range_min, target_set, batch_size, batch_size, false)
+    state = BitCrackEngine.init_engine(range_min, target_set, batch_size, false, batch_size)
     
     t0 = time()
     keys_tested = 0

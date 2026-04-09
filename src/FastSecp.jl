@@ -99,4 +99,82 @@ function point_add_jacobian(P1::PointJ, P2::PointJ)::PointJ
     return PointJ(X3, Y3, Z3)
 end
 
+"""
+    scalar_mul(k::BigInt, P::PointJ)::PointJ
+Multiplicação escalar básica (Double-and-Add) para coordenadas Jacobianas.
+"""
+function scalar_mul(k::BigInt, P::PointJ)::PointJ
+    res = PointJ(FastField.ZERO, FastField.ZERO, FastField.ZERO) # Ponto no infinito
+    addend = P
+    
+    bin_k = string(k, base=2)
+    for i in 1:length(bin_k)
+        res = point_double_jacobian(res)
+        if bin_k[i] == '1'
+            res = point_add_jacobian(res, addend)
+        end
+    end
+    return res
+end
+
+"""
+    negate_point(p::PointJ)::PointJ
+"""
+function negate_point(p::PointJ)::PointJ
+    return PointJ(p.x, sub_mod(FastField.ZERO, p.y), p.z)
+end
+
+"""
+    batch_normalize(points::Vector{PointJ})::Vector{PointA}
+Aplica Montgomery Batch Inversion para transformar múltiplos pontos Jacobianos em Afins (X, Y)
+usando apenas UMA inversão modular.
+"""
+function batch_normalize(points::Vector{PointJ})::Vector{PointA}
+    len = length(points)
+    len == 0 && return PointA[]
+    
+    # Extrair Z coords
+    zs = [p.z for p in points]
+    
+    # Algoritmo de Montgomery
+    partials = Vector{FE256}(undef, len)
+    partials[1] = zs[1]
+    for i in 2:len
+        partials[i] = mul_mod(partials[i-1], zs[i])
+    end
+    
+    # Uma única inversão modular pesada
+    inv_all = inv_mod(partials[len])
+    
+    results = Vector{PointA}(undef, len)
+    
+    for i in len:-1:2
+        inv_z = mul_mod(inv_all, partials[i-1])
+        inv_all = mul_mod(inv_all, zs[i])
+        
+        iz2 = sqr_mod(inv_z)
+        iz3 = mul_mod(iz2, inv_z)
+        
+        results[i] = PointA(mul_mod(points[i].x, iz2), mul_mod(points[i].y, iz3))
+    end
+    
+    # O primeiro elemento
+    iz2 = sqr_mod(inv_all)
+    iz3 = mul_mod(iz2, inv_all)
+    results[1] = PointA(mul_mod(points[1].x, iz2), mul_mod(points[1].y, iz3))
+    
+    return results
+end
+
+"""
+    jacobian_to_affine(p::PointJ)::PointA
+"""
+function jacobian_to_affine(p::PointJ)::PointA
+    is_infinity(p) && return PointA(FastField.ZERO, FastField.ZERO)
+    inv_z = inv_mod(p.z)
+    iz2 = sqr_mod(inv_z)
+    iz3 = mul_mod(iz2, inv_z)
+    return PointA(mul_mod(p.x, iz2), mul_mod(p.y, iz3))
+end
+
 end # module FastSecp
