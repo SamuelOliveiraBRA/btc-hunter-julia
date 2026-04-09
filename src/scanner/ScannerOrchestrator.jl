@@ -74,7 +74,7 @@ function scan_dashboard(
     if CFG.engine == :gpu
         header("Iniciando Busca...")
         println(box_top(" Inicializando Motor GPU "))
-        println(box_line(" $(DIM)Compilando CUDA Kernel (JIT)... Aguarde$(X) "))
+        println(box_line(" $(DIM)Compilando Metal Kernel (JIT)... Aguarde$(X) "))
         println(box_bot())
         try
             KeyhunterEngine.gpu_scan_batch(target_set.hashes, [BigInt(1)], 8192)
@@ -285,21 +285,18 @@ function scan_dashboard(
                 gpu_batch = CFG.gpu_intensity * 1024
                 
                 while !stop[]
+                    # Executa o batch na GPU
                     res_idx = KeyhunterEngine.gpu_scan_batch(target_set.hashes, [curr_base], gpu_batch)
                     
-                    if res_idx == -1
-                        break 
-                    elseif res_idx > 0
+                    actual_scanned = KeyhunterEngine.GPU_STATE[:last_batch]
+                    atomic_add!(keys_done, actual_scanned)
+
+                    if res_idx > 0
                         found_key[]  = curr_base + BigInt(res_idx - 1)
-                        actual_scanned = KeyhunterEngine.GPU_STATE[:last_batch]
-                        atomic_add!(keys_done, max(Int64(actual_scanned), Int64(res_idx)))
                         h_found = BtcCrypto.hash160(BtcCrypto.priv_to_pub_compressed(found_key[]))
                         found_addr[] = address_from_hash(target_set, h_found)
                         stop[] = true; break
                     end
-                    
-                    actual_scanned = KeyhunterEngine.GPU_STATE[:last_batch]
-                    atomic_add!(keys_done, actual_scanned)
                     
                     if mode == 1 # Sequencial
                         curr_base += BigInt(actual_scanned)

@@ -117,7 +117,8 @@ function header(subtitle="")
     eng_s   = ""
     if CFG.engine == :bitcrack; eng_s = M*"BitCrack"*X
     elseif CFG.engine == :bsgs; eng_s = Y*"BSGS"*X
-    elseif CFG.engine == :gpu; eng_s = C*"CUDA/GPU"*X
+    elseif CFG.engine == :gpu
+        eng_s = Sys.isapple() ? C*"Metal/Apple"*X : C*"CUDA/GPU"*X
     else; eng_s = G*"SecpOpt"*X
     end
     hw = get_hw_info()

@@ -8,7 +8,8 @@ using Metal
 # Aritmética modular de 256 bits e Hashing Bitcoin em MSL.
 # ═══════════════════════════════════════════════════════════════════
 
-# --- Constantes Secp256k1 para GPU ---
+# --- Tipos e Constantes Secp256k1 para GPU ---
+const U256GPU = NTuple{8, UInt32}
 const P_LIMBS = (0xfffffc2f, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff)
 
 @inline function add_256(a::U256GPU, b::U256GPU)
