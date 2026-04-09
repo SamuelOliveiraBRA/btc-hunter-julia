@@ -2,11 +2,7 @@ module BitCrackEngine
 
 # ═══════════════════════════════════════════════════════════════════
 # BitCrackEngine.jl — Motor de varredura Afim em Lote (ALTA PERFORMANCE)
-#
-# Evolução:
-# 1. Julia nativo (Jacobianas) -> 14k/s
-# 2. BigInt otimizado + Zero-GC -> 140k/s
-# 3. Batch Affine Addition -> ALTO DESEMPENHO (Alvo: +300k/s)
+# Versão Otimizada: WINDOWS (Portabilidade M4 level)
 # ═══════════════════════════════════════════════════════════════════
 
 using ..FastField
@@ -39,7 +35,7 @@ struct BitCrackState
     h160_buf     :: Vector{UInt8}
 end
 
-function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, both_formats::Bool=false, stride_size::Int=batch_size)::BitCrackState
+function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, stride_size::Integer, both_formats::Bool=false)::BitCrackState
     # 1. Calcular pontos iniciais em Jacobiana (bootstrap)
     points_j = Vector{PointJacobian}(undef, batch_size)
     curr_j = SecpOptimized.scalar_mul(start_key, SecpOptimized.G_J)
@@ -74,88 +70,151 @@ function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, bot
     )
 end
 
-# ── Avançar o lote (Batch Affine Addition) ────────────────
-"""
-    next_batch!(state)
-Avança todos os pontos P[i] = P[i] + S usando Montgomery Batch Inversion.
-Reduz drasticamente o número de multiplicações comparado a Jacobianas.
-"""
+# ── Avançar o lote (Batch Affine Addition 16x Unrolled) ─────
 function next_batch!(state::BitCrackState)
     n = state.batch_size
     Sx = state.stride_A.x
     Sy = state.stride_A.y
+    dx_buf = state.dx_buf
+    dy_buf = state.dy_buf
+    prod_buf = state.prod_buf
+    inv_dx_buf = state.inv_dx_buf
+    points = state.points
     
-    # 1. Calcular Denominadores (dx) e Numeradores (dy)
+    # 1. Calcular Denominadores e Numeradores
     @inbounds for i in 1:n
-        state.dx_buf[i] = sub_mod(Sx, state.points[i].x)
-        state.dy_buf[i] = sub_mod(Sy, state.points[i].y)
+        dx_buf[i] = sub_mod(Sx, points[i].x)
+        dy_buf[i] = sub_mod(Sy, points[i].y)
     end
     
-    # 2. Inversão em Lote dos Denominadores (Algoritmo de Montgomery)
-    @inbounds state.prod_buf[1] = state.dx_buf[1]
-    @inbounds for i in 2:n
-        state.prod_buf[i] = mul_mod(state.prod_buf[i-1], state.dx_buf[i])
+    # 2. Inversão em Lote (Montgomery)
+    @inbounds prod_buf[1] = dx_buf[1]
+    for i in 2:n
+        @inbounds prod_buf[i] = mul_mod(prod_buf[i-1], dx_buf[i])
     end
     
-    inv_all = inv_mod(state.prod_buf[n])
+    inv_all = inv_mod(prod_buf[n])
     
     curr_inv = inv_all
-    @inbounds for i in n:-1:2
-        state.inv_dx_buf[i] = mul_mod(curr_inv, state.prod_buf[i-1])
-        curr_inv = mul_mod(curr_inv, state.dx_buf[i])
+    for i in n:-1:2
+        @inbounds inv_dx_buf[i] = mul_mod(curr_inv, prod_buf[i-1])
+        @inbounds curr_inv = mul_mod(curr_inv, dx_buf[i])
     end
-    @inbounds state.inv_dx_buf[1] = curr_inv
+    @inbounds inv_dx_buf[1] = curr_inv
     
-    # 3. Adição de Pontos em coordenadas afins
-    @inbounds for i in 1:n
-        inv_dx = state.inv_dx_buf[i]
-        dy     = state.dy_buf[i]
-        Px     = state.points[i].x
-        Py     = state.points[i].y
-        
-        # lambda = dy / dx
-        lambda = mul_mod(dy, inv_dx)
-        
-        # x3 = lambda^2 - Px - Sx
-        x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
-        
-        # y3 = lambda(Px - x3) - Py
-        y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
-        
-        state.points[i] = PointA(x3, y3)
+    # 3. Adição de Pontos (Loop Unrolling 16x)
+    i = 1
+    while i <= n - 15
+        @inbounds for j in 0:15
+            idx = i + j
+            inv_dx = inv_dx_buf[idx]
+            dy     = dy_buf[idx]
+            Px     = points[idx].x
+            Py     = points[idx].y
+            
+            lambda = mul_mod(dy, inv_dx)
+            x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
+            y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
+            points[idx] = PointA(x3, y3)
+        end
+        i += 16
+    end
+    # Resto
+    while i <= n
+        @inbounds begin
+            inv_dx = inv_dx_buf[i]
+            dy     = dy_buf[i]
+            Px     = points[i].x
+            Py     = points[i].y
+            lambda = mul_mod(dy, inv_dx)
+            x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
+            y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
+            points[i] = PointA(x3, y3)
+        end
+        i += 1
     end
 end
 
-# ── Verificar lote (Ultra-Fast: pontos já são afins) ──────
-function check_batch(state::BitCrackState)::Tuple{Int, Vector{UInt8}}
+# ── Verificar lote (Ultra-Fast: Unrolling 16x + Pointer Hashing) ─
+function check_batch(state::BitCrackState)
     n = state.batch_size
+    p_pub  = pointer(state.pub_buf)
+    p_h160 = pointer(state.h160_buf)
+    p_sha  = pointer(state.sha_buf)
+    lut    = state.targets.lut
+    points = state.points
     
-    for i in 1:n
-        @inbounds pt = state.points[i]
-        
-        # 1. Comprimido (C)
-        # Coordenada X já é affine.x
-        FastField.write_32bytes!(state.pub_buf, 1, pt.x)
-        state.pub_buf[1] = iseven(pt.y) ? 0x02 : 0x03
-        
-        BtcCrypto.hash160!(view(state.pub_buf, 1:33), state.h160_buf, state.sha_buf)
-        if check_hit(state.targets, state.h160_buf)
-            return (i, copy(state.h160_buf))
-        end
-
-        # 2. Não-comprimido (U) - Opcional
-        if state.both_formats
-            state.pub_buf[1] = 0x04
-            FastField.write_32bytes!(state.pub_buf, 33, pt.y)
+    i = 1
+    while i <= n - 15
+        @inbounds for j in 0:15
+            idx = i + j
+            pt = points[idx]
             
-            BtcCrypto.hash160!(view(state.pub_buf, 1:65), state.h160_buf, state.sha_buf)
-            if check_hit(state.targets, state.h160_buf)
-                return (i, copy(state.h160_buf))
+            # 1. Comprimido
+            unsafe_store!(p_pub, iseven(pt.y.v1) ? 0x02 : 0x03)
+            FastField.write_32bytes!(state.pub_buf, 1, pt.x)
+            
+            # Hashing Nativo (libcrypto no Windows)
+            BtcCrypto.hash160_ptr!(p_pub, 33, p_h160, p_sha)
+            
+            # Inlining Filtro LUT
+            h1 = unsafe_load(p_h160, 1)
+            h2 = unsafe_load(p_h160, 2)
+            if lut[((Int(h1) << 8) | Int(h2)) + 1]
+                if MultiTarget.check_hit(state.targets, state.h160_buf)
+                    return (idx, copy(state.h160_buf))
+                end
+            end
+
+            if state.both_formats
+                unsafe_store!(p_pub, 0x04)
+                FastField.write_32bytes!(state.pub_buf, 33, pt.y)
+                BtcCrypto.hash160_ptr!(p_pub, 65, p_h160, p_sha)
+                
+                h1 = unsafe_load(p_h160, 1)
+                h2 = unsafe_load(p_h160, 2)
+                if lut[((Int(h1) << 8) | Int(h2)) + 1]
+                    if MultiTarget.check_hit(state.targets, state.h160_buf)
+                        return (idx, copy(state.h160_buf))
+                    end
+                end
             end
         end
+        i += 16
     end
 
-    return (0, UInt8[])
+    while i <= n
+        @inbounds begin
+            pt = points[i]
+            unsafe_store!(p_pub, iseven(pt.y.v1) ? 0x02 : 0x03)
+            FastField.write_32bytes!(state.pub_buf, 1, pt.x)
+            BtcCrypto.hash160_ptr!(p_pub, 33, p_h160, p_sha)
+            
+            h1 = unsafe_load(p_h160, 1)
+            h2 = unsafe_load(p_h160, 2)
+            if lut[((Int(h1) << 8) | Int(h2)) + 1]
+                if MultiTarget.check_hit(state.targets, state.h160_buf)
+                    return (i, copy(state.h160_buf))
+                end
+            end
+
+            if state.both_formats
+                unsafe_store!(p_pub, 0x04)
+                FastField.write_32bytes!(state.pub_buf, 33, pt.y)
+                BtcCrypto.hash160_ptr!(p_pub, 65, p_h160, p_sha)
+                h1 = unsafe_load(p_h160, 1)
+                h2 = unsafe_load(p_h160, 2)
+                if lut[((Int(h1) << 8) | Int(h2)) + 1]
+                    if MultiTarget.check_hit(state.targets, state.h160_buf)
+                        return (i, copy(state.h160_buf))
+                    end
+                end
+            end
+        end
+        i += 1
+    end
+
+    return (0, nothing)
 end
 
 end # module

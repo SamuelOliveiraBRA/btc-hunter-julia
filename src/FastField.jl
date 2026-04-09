@@ -148,12 +148,12 @@ end
     r3, cb = add_carry_native(r3, h3, cb)
     r4, cb = add_carry_native(r4, h4, cb)
     
-    # Redução 2 (Lido do overflow superior que atinge até 33 bits)
-    H1 = UInt64(cb) + h5
-    P2 = Base.widemul(H1, K)
-    h1_2 = (P2 & 0xffffffffffffffff) % UInt64
-    h2_2 = (P2 >> 64) % UInt64
-    
+    # Redução 2 (Usando mac_with_carry para máxima velocidade, lido do overflow superior)
+    c2 = UInt64(cb) + h5 
+
+    h1_2, c_new = mac_with_carry(c2, K, 0x0000000000000000, 0x0000000000000000)
+    h2_2 = c_new
+
     r1, cb2 = Base.add_with_overflow(r1, h1_2)
     r2, cb2 = add_carry_native(r2, h2_2, UInt64(cb2))
     r3, cb2 = add_carry_native(r3, 0x0000000000000000, UInt64(cb2))

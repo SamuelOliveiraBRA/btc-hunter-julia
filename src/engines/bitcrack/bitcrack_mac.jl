@@ -106,9 +106,10 @@ function next_batch!(state::BitCrackState)
     end
     @inbounds inv_dx_buf[1] = curr_inv
     
-    # 3. Adição de Pontos (Loop Unrolling 4x)
-    @inbounds @fastmath for i in 1:4:n
-        for j in 0:3
+    # 3. Adição de Pontos (Loop Unrolling 16x para saturar as ALUs do M4)
+    i = 1
+    while i <= n - 15
+        @inbounds for j in 0:15
             idx = i + j
             inv_dx = inv_dx_buf[idx]
             dy     = dy_buf[idx]
@@ -120,6 +121,21 @@ function next_batch!(state::BitCrackState)
             y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
             points[idx] = PointA(x3, y3)
         end
+        i += 16
+    end
+    # Resto
+    while i <= n
+        @inbounds begin
+            inv_dx = inv_dx_buf[i]
+            dy     = dy_buf[i]
+            Px     = points[i].x
+            Py     = points[i].y
+            lambda = mul_mod(dy, inv_dx)
+            x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
+            y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
+            points[i] = PointA(x3, y3)
+        end
+        i += 1
     end
 end
 
@@ -132,46 +148,77 @@ function check_batch(state::BitCrackState)
     lut    = state.targets.lut
     points = state.points
     
-    # Processamento unrolled para melhor aproveitamento do pipeline do M4
-    @inbounds for i in 1:n
-        pt = points[i]
-        
-        # 1. Formato Comprimido
-        unsafe_store!(p_pub, iseven(pt.y.v1) ? 0x02 : 0x03)
-        FastField.write_32bytes!(state.pub_buf, 1, pt.x)
-        
-        # Hashing (A parte mais cara) - Agora turbinado com CommonCrypto
-        BtcCrypto.hash160_ptr!(p_pub, 33, p_h160, p_sha)
-        
-        # ── Inlining Crítico do Filtro LUT ──
-        # Evita chamada de função e check de endereços em 99.99% dos casos
-        h1 = unsafe_load(p_h160, 1)
-        h2 = unsafe_load(p_h160, 2)
-        idx_lut = (Int(h1) << 8) | Int(h2)
-        
-        if lut[idx_lut + 1]
-            # Se cair aqui, é um hit em potencial. Verificamos a fundo.
-            if MultiTarget.check_hit(state.targets, state.h160_buf)
-                return (i, copy(state.h160_buf))
+    # Processamento unrolled 16x para saturar as pipelines do M4 e minimizar stalls
+    i = 1
+    while i <= n - 15
+        @inbounds for j in 0:15
+            idx = i + j
+            pt = points[idx]
+            
+            # 1. Formato Comprimido
+            unsafe_store!(p_pub, iseven(pt.y.v1) ? 0x02 : 0x03)
+            FastField.write_32bytes!(state.pub_buf, 1, pt.x)
+            
+            # Hashing Turbinado (CommonCrypto no Mac)
+            BtcCrypto.hash160_ptr!(p_pub, 33, p_h160, p_sha)
+            
+            # Inlining Filtro LUT
+            h1 = unsafe_load(p_h160, 1)
+            h2 = unsafe_load(p_h160, 2)
+            if lut[((Int(h1) << 8) | Int(h2)) + 1]
+                if MultiTarget.check_hit(state.targets, state.h160_buf)
+                    return (idx, copy(state.h160_buf))
+                end
+            end
+
+            # 2. Formato Não-comprimido (Se ativo)
+            if state.both_formats
+                unsafe_store!(p_pub, 0x04)
+                FastField.write_32bytes!(state.pub_buf, 33, pt.y)
+                BtcCrypto.hash160_ptr!(p_pub, 65, p_h160, p_sha)
+                
+                h1 = unsafe_load(p_h160, 1)
+                h2 = unsafe_load(p_h160, 2)
+                if lut[((Int(h1) << 8) | Int(h2)) + 1]
+                    if MultiTarget.check_hit(state.targets, state.h160_buf)
+                        return (idx, copy(state.h160_buf))
+                    end
+                end
             end
         end
+        i += 16
+    end
 
-        # 2. Formato Não-comprimido (Se ativo)
-        if state.both_formats
-            unsafe_store!(p_pub, 0x04)
-            FastField.write_32bytes!(state.pub_buf, 33, pt.y)
-            BtcCrypto.hash160_ptr!(p_pub, 65, p_h160, p_sha)
+    # Resto do lote
+    while i <= n
+        @inbounds begin
+            pt = points[i]
+            unsafe_store!(p_pub, iseven(pt.y.v1) ? 0x02 : 0x03)
+            FastField.write_32bytes!(state.pub_buf, 1, pt.x)
+            BtcCrypto.hash160_ptr!(p_pub, 33, p_h160, p_sha)
             
             h1 = unsafe_load(p_h160, 1)
             h2 = unsafe_load(p_h160, 2)
-            idx_lut_u = (Int(h1) << 8) | Int(h2)
-            
-            if lut[idx_lut_u + 1]
+            if lut[((Int(h1) << 8) | Int(h2)) + 1]
                 if MultiTarget.check_hit(state.targets, state.h160_buf)
                     return (i, copy(state.h160_buf))
                 end
             end
+
+            if state.both_formats
+                unsafe_store!(p_pub, 0x04)
+                FastField.write_32bytes!(state.pub_buf, 33, pt.y)
+                BtcCrypto.hash160_ptr!(p_pub, 65, p_h160, p_sha)
+                h1 = unsafe_load(p_h160, 1)
+                h2 = unsafe_load(p_h160, 2)
+                if lut[((Int(h1) << 8) | Int(h2)) + 1]
+                    if MultiTarget.check_hit(state.targets, state.h160_buf)
+                        return (i, copy(state.h160_buf))
+                    end
+                end
+            end
         end
+        i += 1
     end
 
     return (0, nothing)
