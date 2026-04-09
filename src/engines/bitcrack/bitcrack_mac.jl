@@ -75,89 +75,101 @@ function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, str
 end
 
 # ── Avançar o lote (Batch Affine Addition) ────────────────
-"""
-    next_batch!(state)
-Avança todos os pontos P[i] = P[i] + S usando Montgomery Batch Inversion.
-Reduz drasticamente o número de multiplicações comparado a Jacobianas.
-"""
 function next_batch!(state::BitCrackState)
     n = state.batch_size
     Sx = state.stride_A.x
     Sy = state.stride_A.y
+    dx_buf = state.dx_buf
+    dy_buf = state.dy_buf
+    prod_buf = state.prod_buf
+    inv_dx_buf = state.inv_dx_buf
+    points = state.points
     
-    # 1. Calcular Denominadores (dx) e Numeradores (dy)
-    @inbounds for i in 1:n
-        state.dx_buf[i] = sub_mod(Sx, state.points[i].x)
-        state.dy_buf[i] = sub_mod(Sy, state.points[i].y)
+    # 1. Calcular Denominadores e Numeradores (SIMD-friendly)
+    @inbounds @fastmath for i in 1:n
+        dx_buf[i] = sub_mod(Sx, points[i].x)
+        dy_buf[i] = sub_mod(Sy, points[i].y)
     end
     
-    # 2. Inversão em Lote dos Denominadores (Algoritmo de Montgomery)
-    @inbounds state.prod_buf[1] = state.dx_buf[1]
-    @inbounds for i in 2:n
-        state.prod_buf[i] = mul_mod(state.prod_buf[i-1], state.dx_buf[i])
+    # 2. Inversão em Lote (Montgomery)
+    @inbounds prod_buf[1] = dx_buf[1]
+    for i in 2:n
+        @inbounds prod_buf[i] = mul_mod(prod_buf[i-1], dx_buf[i])
     end
     
-    inv_all = inv_mod(state.prod_buf[n])
+    inv_all = inv_mod(prod_buf[n])
     
     curr_inv = inv_all
-    @inbounds for i in n:-1:2
-        state.inv_dx_buf[i] = mul_mod(curr_inv, state.prod_buf[i-1])
-        curr_inv = mul_mod(curr_inv, state.dx_buf[i])
+    for i in n:-1:2
+        @inbounds inv_dx_buf[i] = mul_mod(curr_inv, prod_buf[i-1])
+        @inbounds curr_inv = mul_mod(curr_inv, dx_buf[i])
     end
-    @inbounds state.inv_dx_buf[1] = curr_inv
+    @inbounds inv_dx_buf[1] = curr_inv
     
-    # 3. Adição de Pontos em coordenadas afins
-    @inbounds for i in 1:n
-        inv_dx = state.inv_dx_buf[i]
-        dy     = state.dy_buf[i]
-        Px     = state.points[i].x
-        Py     = state.points[i].y
-        
-        # lambda = dy / dx
-        lambda = mul_mod(dy, inv_dx)
-        
-        # x3 = lambda^2 - Px - Sx
-        x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
-        
-        # y3 = lambda(Px - x3) - Py
-        y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
-        
-        state.points[i] = PointA(x3, y3)
+    # 3. Adição de Pontos (Loop Unrolling 4x)
+    @inbounds @fastmath for i in 1:4:n
+        for j in 0:3
+            idx = i + j
+            inv_dx = inv_dx_buf[idx]
+            dy     = dy_buf[idx]
+            Px     = points[idx].x
+            Py     = points[idx].y
+            
+            lambda = mul_mod(dy, inv_dx)
+            x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
+            y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
+            points[idx] = PointA(x3, y3)
+        end
     end
 end
 
-# ── Verificar lote (Ultra-Fast: pontos já são afins) ──────
+# ── Verificar lote (Ultra-Otimizado para M4) ──────────────
 function check_batch(state::BitCrackState)
     n = state.batch_size
     p_pub  = pointer(state.pub_buf)
     p_h160 = pointer(state.h160_buf)
     p_sha  = pointer(state.sha_buf)
+    lut    = state.targets.lut
+    points = state.points
     
-    for i in 1:n
-        @inbounds pt = state.points[i]
+    # Processamento unrolled para melhor aproveitamento do pipeline do M4
+    @inbounds for i in 1:n
+        pt = points[i]
         
-        # 1. Formato Comprimido (C) - 33 bytes
-        # Byte de prefixo: 0x02 se Y é par, 0x03 se ímpar.
-        @inbounds unsafe_store!(p_pub, iseven(pt.y.v1) ? 0x02 : 0x03)
+        # 1. Formato Comprimido
+        unsafe_store!(p_pub, iseven(pt.y.v1) ? 0x02 : 0x03)
         FastField.write_32bytes!(state.pub_buf, 2, pt.x)
         
-        # Hashing ultra-veloz via ponteiros (Zero-GC)
+        # Hashing (A parte mais cara) - Agora turbinado com CommonCrypto
         BtcCrypto.hash160_ptr!(p_pub, 33, p_h160, p_sha)
         
-        # Check na Lookup Table (O(1))
-        if check_hit(state.targets, state.h160_buf)
-            return (i, copy(state.h160_buf))
+        # ── Inlining Crítico do Filtro LUT ──
+        # Evita chamada de função e check de endereços em 99.99% dos casos
+        h1 = unsafe_load(p_h160, 1)
+        h2 = unsafe_load(p_h160, 2)
+        idx_lut = (Int(h1) << 8) | Int(h2)
+        
+        if lut[idx_lut + 1]
+            # Se cair aqui, é um hit em potencial. Verificamos a fundo.
+            if MultiTarget.check_hit(state.targets, state.h160_buf)
+                return (i, copy(state.h160_buf))
+            end
         end
 
-        # 2. Formato Não-comprimido (U) - Opcional - 65 bytes
+        # 2. Formato Não-comprimido (Se ativo)
         if state.both_formats
-            @inbounds unsafe_store!(p_pub, 0x04)
-            # X já está no local correto (bytes 2-33)
+            unsafe_store!(p_pub, 0x04)
             FastField.write_32bytes!(state.pub_buf, 34, pt.y)
-            
             BtcCrypto.hash160_ptr!(p_pub, 65, p_h160, p_sha)
-            if check_hit(state.targets, state.h160_buf)
-                return (i, copy(state.h160_buf))
+            
+            h1 = unsafe_load(p_h160, 1)
+            h2 = unsafe_load(p_h160, 2)
+            idx_lut_u = (Int(h1) << 8) | Int(h2)
+            
+            if lut[idx_lut_u + 1]
+                if MultiTarget.check_hit(state.targets, state.h160_buf)
+                    return (i, copy(state.h160_buf))
+                end
             end
         end
     end

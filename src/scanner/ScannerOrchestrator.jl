@@ -249,23 +249,25 @@ function scan_dashboard(
                     local_count += batch_sz
                     batch_counter += 1
                     
-                    # Sincroniza com o global apenas a cada 256 lotes (Reduz contenção no M4)
-                    if batch_counter >= 256
-                        atomic_add!(keys_done, local_count)
-                        local_count = 0
-                        batch_counter = 0
-                    end
-
                     if mode == 1 || mode == 2
-                        # No modo 1 ou 2, usamos o next_batch! que já tem o stride configurado no state
-                        BitCrackEngine.next_batch!(state)
-                        local_batch_idx += 1
-                        
-                        # Verificação de limite simples (BigInt apenas aqui)
                         current_pos = curr_base + BigInt(local_batch_idx * (batch_sz * n_threads))
                         if mode == 1 && current_pos > end_key; break; end
                         if mode == 2 && current_pos < end_key; break; end
-                        last_key[] = current_pos
+                        
+                        # Sincroniza progresso a cada 16 lotes (Suaviza a Velocidade na UI)
+                        if mod(batch_counter, 16) == 0
+                            atomic_add!(keys_done, local_count)
+                            local_count = 0
+                        end
+
+                        # Sincroniza Chave/Checkpoint a cada 256 lotes (Reduz contenção de memória)
+                        if batch_counter >= 256
+                            last_key[] = current_pos 
+                            batch_counter = 0
+                        end
+
+                        BitCrackEngine.next_batch!(state)
+                        local_batch_idx += 1
                     else
                         # Modo Aleatório
                         stop[] && break

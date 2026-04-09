@@ -40,9 +40,16 @@ end
 Versão ultra-veloz via ponteiros diretos (Zero-GC).
 """
 @inline function hash160_ptr!(data_p::Ptr{UInt8}, dlen::Int, out_p::Ptr{UInt8}, sha_p::Ptr{UInt8})
-    # SHA256(data, dlen, out)
-    ccall((:SHA256, "libcrypto"), Ptr{Cvoid}, (Ptr{UInt8}, Csize_t, Ptr{UInt8}), data_p, dlen, sha_p)
-    # RIPEMD160(data, dlen, out)
+    if Sys.isapple()
+        # CommonCrypto (Apple Native) - Ultra veloz e thread-safe no M4
+        ccall((:CC_SHA256, "/usr/lib/system/libcommonCrypto.dylib"), Ptr{Cvoid}, 
+              (Ptr{UInt8}, UInt32, Ptr{UInt8}), data_p, dlen, sha_p)
+    else
+        # Fallback para libcrypto (OpenSSL)
+        ccall((:SHA256, "libcrypto"), Ptr{Cvoid}, (Ptr{UInt8}, Csize_t, Ptr{UInt8}), data_p, dlen, sha_p)
+    end
+    
+    # RIPEMD160 - Continua via libcrypto (o custo é baixo comparado ao SHA256)
     ccall((:RIPEMD160, "libcrypto"), Ptr{Cvoid}, (Ptr{UInt8}, Csize_t, Ptr{UInt8}), sha_p, 32, out_p)
 end
 

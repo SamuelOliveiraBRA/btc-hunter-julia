@@ -1,5 +1,5 @@
 {
-    "cpus": 3,
+    "cpus": 10,
     "internet": true,
     "gpu": false,
     "gpu_intensity": 1024,
@@ -10,12 +10,12 @@
     "wallet_status": 0,
     "interval_min": "0x400000000000000000",
     "interval_max": "0x7fffffffffffffffff",
-    "saldo": "0.00000000",
-    "mode": 0,
+    "saldo": "7.10057266",
+    "mode": 1,
     "running": true,
-    "batch_size": 20480,
+    "batch_size": 102400,
     "both_formats": false,
     "use_checkpoint": true,
-    "checkpoint_interval": 180,
+    "checkpoint_interval": 30,
     "engine": "bitcrack"
 }

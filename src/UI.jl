@@ -107,7 +107,8 @@ function header(subtitle="")
     println("  ██████╔╝   ██║   ╚██████╗")
     println("  ╚═════╝    ╚═╝    ╚═════╝$(X)\n")
 
-    cpu_bar = G * ("■" ^ max(0, CFG.cpus)) * DIM * ("□" ^ max(0, Sys.CPU_THREADS - CFG.cpus)) * X * " $(DIM)$(CFG.cpus)/$(Sys.CPU_THREADS)$(X)"
+    total_threads = max(Sys.CPU_THREADS, Threads.nthreads())
+    cpu_bar = G * ("■" ^ max(0, CFG.cpus)) * DIM * ("□" ^ max(0, total_threads - CFG.cpus)) * X * " $(DIM)$(CFG.cpus)/$(total_threads)$(X)"
     gpu_bar = CFG.gpu ? (C * ("■" ^ (clamp(CFG.gpu_intensity ÷ 256, 1, 8))) * DIM * ("□" ^ (max(0, 8 - (CFG.gpu_intensity ÷ 256)))) * X * " $(DIM)$(CFG.gpu_intensity)$(X)") : (DIM * "Desativada" * X)
     inet_s  = CFG.internet ? G*"● Ativa"*X : DIM*"○ Desativada"*X
     fmt_s   = CFG.both_formats ? C*"C+U"*X : G*"Comprimido"*X

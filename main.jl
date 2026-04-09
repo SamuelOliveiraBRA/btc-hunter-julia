@@ -320,8 +320,9 @@ function escolher_buffer()
     println("  $(Y)[2]$(X)  8.192  (Médio)")
     println("  $(B)[3]$(X)  16.384 (M4 Pro / Max)")
     println("  $(M)[4]$(X)  32.768 (Extremo)")
-    println("  $(R)[5]$(X)  65.536 (Lendário 🔥)")
-    println("  $(W)[6]$(X)  Personalizado")
+    println("  $(R)[5]$(X)  65.536 (Lendário)")
+    println("  $(C)[6]$(X)  102.400 (Apple M4 Extreme 🔥)")
+    println("  $(W)[7]$(X)  Personalizado")
     println("  $(DIM)[0]  Voltar$(X)\n")
     
     op = UIModule.input("  Opção: ")
@@ -330,7 +331,8 @@ function escolher_buffer()
     elseif op == "3"; CFG.batch_size = 16384
     elseif op == "4"; CFG.batch_size = 32768
     elseif op == "5"; CFG.batch_size = 65536
-    elseif op == "6"
+    elseif op == "6"; CFG.batch_size = 102400
+    elseif op == "7"
         s = UIModule.input("  $(W)Tamanho:$(X) ")
         v = tryparse(Int, strip(s))
         if v !== nothing && v > 0; CFG.batch_size = v; end

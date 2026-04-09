@@ -48,26 +48,14 @@ FE256(n::Integer) = from_big(BigInt(n))
 
 @inline function write_32bytes!(buf::AbstractVector{UInt8}, offset::Int, f::FE256)
     @inbounds begin
-        v = f.v4
-        buf[offset+0] = (v >> 56) % UInt8; buf[offset+1] = (v >> 48) % UInt8
-        buf[offset+2] = (v >> 40) % UInt8; buf[offset+3] = (v >> 32) % UInt8
-        buf[offset+4] = (v >> 24) % UInt8; buf[offset+5] = (v >> 16) % UInt8
-        buf[offset+6] = (v >> 8)  % UInt8; buf[offset+7] = (v)       % UInt8
-        v = f.v3
-        buf[offset+8] = (v >> 56) % UInt8; buf[offset+9] = (v >> 48) % UInt8
-        buf[offset+10] = (v >> 40) % UInt8; buf[offset+11] = (v >> 32) % UInt8
-        buf[offset+12] = (v >> 24) % UInt8; buf[offset+13] = (v >> 16) % UInt8
-        buf[offset+14] = (v >> 8)  % UInt8; buf[offset+15] = (v)       % UInt8
-        v = f.v2
-        buf[offset+16] = (v >> 56) % UInt8; buf[offset+17] = (v >> 48) % UInt8
-        buf[offset+18] = (v >> 40) % UInt8; buf[offset+19] = (v >> 32) % UInt8
-        buf[offset+20] = (v >> 24) % UInt8; buf[offset+21] = (v >> 16) % UInt8
-        buf[offset+22] = (v >> 8)  % UInt8; buf[offset+23] = (v)       % UInt8
-        v = f.v1
-        buf[offset+24] = (v >> 56) % UInt8; buf[offset+25] = (v >> 48) % UInt8
-        buf[offset+26] = (v >> 40) % UInt8; buf[offset+27] = (v >> 32) % UInt8
-        buf[offset+28] = (v >> 24) % UInt8; buf[offset+29] = (v >> 16) % UInt8
-        buf[offset+30] = (v >> 8)  % UInt8; buf[offset+31] = (v)       % UInt8
+        p = pointer(buf, offset + 1)
+        p64 = reinterpret(Ptr{UInt64}, p)
+        # Bitcoin usa Big-Endian, então invertemos os bytes de cada UInt64
+        # e escrevemos na ordem inversa das palavras (v4 -> v1)
+        unsafe_store!(p64, bswap(f.v4), 1)
+        unsafe_store!(p64, bswap(f.v3), 2)
+        unsafe_store!(p64, bswap(f.v2), 3)
+        unsafe_store!(p64, bswap(f.v1), 4)
     end
 end
 
