@@ -4,7 +4,7 @@ module Engines
 # Engines.jl — Despachante de Motores Multi-plataforma
 # ═══════════════════════════════════════════════════════════════════
 
-export BitCrackEngine, BitCrackLegacy, BSGSEngine, GpuEngine
+export BitCrackEngine, BitCrackLegacy, BSGSEngine, GpuEngine, SecpOptimized
 
 # 1. Detectar Plataforma
 const IS_MAC     = Sys.isapple()

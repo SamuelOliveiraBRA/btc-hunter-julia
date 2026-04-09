@@ -12,7 +12,7 @@ module BitCrackEngine
 using ..FastField
 using ..FastSecp
 using ..BtcCrypto
-using ..SecpEngine
+using ..SecpOptimized
 using ..MultiTarget
 
 export BitCrackState, init_engine, next_batch!, check_batch
@@ -42,21 +42,21 @@ end
 function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, stride_size::Integer, both_formats::Bool=false)::BitCrackState
     # 1. Calcular pontos iniciais em Jacobiana (bootstrap)
     points_j = Vector{PointJacobian}(undef, batch_size)
-    curr_j = SecpEngine.scalar_mul(start_key, SecpEngine.G_J)
-    step_j = SecpEngine.G_J
+    curr_j = SecpOptimized.scalar_mul(start_key, SecpOptimized.G_J)
+    step_j = SecpOptimized.G_J
     
     for i in 1:batch_size
         points_j[i] = curr_j
-        curr_j = SecpEngine.add_points_jacobian(curr_j, step_j)
+        curr_j = SecpOptimized.add_points_jacobian(curr_j, step_j)
     end
     
     # 2. Normalizar lote para Afim (uma única inversão pesada aqui)
-    affine_tuples = SecpEngine.batch_normalize(points_j)
+    affine_tuples = SecpOptimized.batch_normalize(points_j)
     points_a = [PointA(FE256(t[1]), FE256(t[2])) for t in affine_tuples]
     
     # 3. Preparar o Stride (S) em Afim
-    stride_j = SecpEngine.scalar_mul(BigInt(stride_size), SecpEngine.G_J)
-    sx, sy = SecpEngine.jacobian_to_affine(stride_j)
+    stride_j = SecpOptimized.scalar_mul(BigInt(stride_size), SecpOptimized.G_J)
+    sx, sy = SecpOptimized.jacobian_to_affine(stride_j)
     stride_a = PointA(FE256(sx), FE256(sy))
     
     # buffers

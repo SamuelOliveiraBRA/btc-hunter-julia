@@ -44,8 +44,6 @@ using .Engines
 include("src/scanner/ScannerOrchestrator.jl")
 using .ScannerOrchestrator
 
-include("src/Benchmark.jl")
-using .BenchmarkModule
 
 using Dates, Printf, Random, JSON, CUDA
 
@@ -377,16 +375,47 @@ function escolher_checkpoint()
     end
 end
 
+function reiniciar_com_threads()
+    n = CFG.cpus
+    header("Reiniciar com Threads Corretos")
+    julia_bin = joinpath(Sys.BINDIR, "julia")
+    cmd = "$(julia_bin) -t $(n) main.jl"
+    println("  $(Y)Julia iniciado com apenas $(Threads.nthreads()) thread(s).$(X)")
+    println("  $(W)Para usar $(n) CPUs, execute:$(X)\n")
+    println("  $(G)  $(cmd)$(X)\n")
+    println("  $(DIM)Ou use o script:  bash btc.sh$(X)\n")
+    println("  $(R)[1]$(X)  Reiniciar agora automaticamente")
+    println("  $(DIM)[0]  Voltar$(X)\n")
+    op = UIModule.input("  Opção: ")
+    if op == "1"
+        println("\n  $(G)Reiniciando com $(n) threads...$(X)")
+        sleep(1)
+        # Salva configuração e relança o processo com os threads corretos
+        ConfigModule.save_settings(CFG)
+        run(Cmd([julia_bin, "-t", string(n), "main.jl"]))
+        exit(0)
+    end
+end
+
 function config_menu()
     while true
         header("Configurações")
-        println("  $(B)[1]$(X)  Configurar CPUs     $(DIM)($(CFG.cpus) cores)$(X)")
+        # Aviso de thread mismatch
+        active_threads = Threads.nthreads()
+        if active_threads < CFG.cpus
+            println("  $(R)⚠  Atenção: Julia rodando com $(active_threads) thread(s), mas CPUs = $(CFG.cpus)$(X)")
+            println("  $(DIM)   Use [8] para reiniciar com a performance máxima$(X)\n")
+        end
+        println("  $(B)[1]$(X)  Configurar CPUs     $(DIM)($(CFG.cpus) cores | $(active_threads) ativos)$(X)")
         println("  $(C)[2]$(X)  Configurar Internet $(DIM)($(CFG.internet ? "Ligada" : "Desligada"))$(X)")
         println("  $(G)[3]$(X)  Configurar GPU      $(DIM)($(CFG.gpu ? "Ativa" : "Desativada"))$(X)")
         println("  $(M)[4]  Benchmark / Ajuste$(X)")
         println("  $(Y)[5]  Formato de Busca $(DIM)($(CFG.both_formats ? "Ambos" : "Comprimido"))$(X)")
         println("  $(M)[6]  Configurar Checkpoint $(DIM)($(CFG.use_checkpoint ? "Ativo" : "Off"))$(X)")
         println("  $(B)[7]$(X)  Configurar Buffer     $(DIM)($(CFG.batch_size))$(X)")
+        if active_threads < CFG.cpus
+            println("  $(R)[8]$(X)  🚀 Reiniciar com $(CFG.cpus) threads (Performance Máxima)")
+        end
         println("  $(DIM)[0]  Voltar$(X)\n")
 
         op = UIModule.input("  Opção: ")
@@ -399,6 +428,7 @@ function config_menu()
             ConfigModule.save_settings(CFG)
         elseif op == "6"; escolher_checkpoint()
         elseif op == "7"; escolher_buffer()
+        elseif op == "8"; reiniciar_com_threads()
         elseif op == "0"; break
         end
     end

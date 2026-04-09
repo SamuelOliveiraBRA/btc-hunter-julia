@@ -8,7 +8,7 @@ using ..BtcCrypto
 using ..CheckpointManager
 using ..MultiTarget
 using ..BtcUtils
-using ..Engines: BitCrackEngine, KeyhunterEngine, SecpEngine
+using ..Engines: BitCrackEngine, GpuEngine, SecpOptimized
 using Base.Threads: @spawn, Atomic, atomic_add!
 using Dates, Printf, Random, JSON
 
@@ -194,12 +194,12 @@ function scan_dashboard(
     safe_rng_max  = rng_max - BigInt(batch_sz * n_threads)
 
     # Pré-cálculo dos passos
-    G_step           = SecpEngine.scalar_mul(BigInt(n_threads), SecpEngine.G_J)
+    G_step           = SecpOptimized.scalar_mul(BigInt(n_threads), SecpOptimized.G_J)
     
     # Stride para o modo reverso (passo negativo)
     stride_val = mode == 2 ? -BigInt(batch_sz * n_threads) : BigInt(batch_sz * n_threads)
-    G_batch_step     = SecpEngine.scalar_mul(stride_val, SecpEngine.G_J)
-    G_batch_step_neg = SecpEngine.negate_point_jacobian(G_batch_step)
+    G_batch_step     = SecpOptimized.scalar_mul(stride_val, SecpOptimized.G_J)
+    G_batch_step_neg = SecpOptimized.negate_point_jacobian(G_batch_step)
 
     worker_tasks = map(1:n_threads) do wid
         @spawn begin
@@ -316,18 +316,18 @@ function scan_dashboard(
                     yield()
                 end
             else
-                # Motor SecpEngine (padrão)
-                P_base = SecpEngine.scalar_mul(curr_base, SecpEngine.G_J)
-                batch_points = Vector{SecpEngine.PointJacobian}(undef, batch_sz)
+                # Motor SecpOptimized (padrão)
+                P_base = SecpOptimized.scalar_mul(curr_base, SecpOptimized.G_J)
+                batch_points = Vector{SecpOptimized.PointJacobian}(undef, batch_sz)
 
                 while !stop[]
                     P_temp = P_base
                     for i in 1:batch_sz
                         batch_points[i] = P_temp
-                        P_temp = SecpEngine.add_points_jacobian(P_temp, G_step)
+                        P_temp = SecpOptimized.add_points_jacobian(P_temp, G_step)
                     end
 
-                    affine_pts = SecpEngine.batch_normalize(batch_points)
+                    affine_pts = SecpOptimized.batch_normalize(batch_points)
                     pubs_comp = BtcCrypto.serialize_compressed_batch(affine_pts)
 
                     for i in 1:batch_sz
@@ -353,14 +353,14 @@ function scan_dashboard(
                     if mode == 1
                         curr_base += BigInt(batch_sz * n_threads)
                         curr_base > end_key && break
-                        P_base = SecpEngine.add_points_jacobian(P_base, G_batch_step)
+                        P_base = SecpOptimized.add_points_jacobian(P_base, G_batch_step)
                     elseif mode == 2
                         curr_base -= BigInt(batch_sz * n_threads)
                         curr_base < end_key && break
-                        P_base = SecpEngine.add_points_jacobian(P_base, G_batch_step_neg)
+                        P_base = SecpOptimized.add_points_jacobian(P_base, G_batch_step_neg)
                     else
                         curr_base = BigInt(rand(start_key:rng_max))
-                        P_base = SecpEngine.scalar_mul(curr_base, SecpEngine.G_J)
+                        P_base = SecpOptimized.scalar_mul(curr_base, SecpOptimized.G_J)
                     end
                     last_key[] = curr_base
                     yield()
