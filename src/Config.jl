@@ -22,6 +22,8 @@ mutable struct Config
     checkpoint_interval::Int
     engine::Symbol
     gpu::Bool
+    gpu_name::String
+    gpu_mem::String
 end
 
 const SETTINGS_FILE = "config/settings.json"
@@ -41,7 +43,7 @@ function load_settings()
     # Padrões iniciais
     default_cfg = Config(
         10, false, 0, "", 0,
-        "0x0", "0x0", "", 0, true, 16384, false, true, 30, :bitcrack, false
+        "0x0", "0x0", "", 0, true, 16384, false, true, 30, :bitcrack, false, "", ""
     )
 
     if !isfile(SETTINGS_FILE)

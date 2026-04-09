@@ -135,7 +135,7 @@ function check_batch(state::BitCrackState)::Tuple{Int, Vector{UInt8}}
         
         # 1. Comprimido (C)
         # Coordenada X já é affine.x
-        FastField.write_32bytes!(state.pub_buf, 2, pt.x)
+        FastField.write_32bytes!(state.pub_buf, 1, pt.x)
         state.pub_buf[1] = iseven(pt.y) ? 0x02 : 0x03
         
         BtcCrypto.hash160!(view(state.pub_buf, 1:33), state.h160_buf, state.sha_buf)
@@ -146,7 +146,7 @@ function check_batch(state::BitCrackState)::Tuple{Int, Vector{UInt8}}
         # 2. Não-comprimido (U) - Opcional
         if state.both_formats
             state.pub_buf[1] = 0x04
-            FastField.write_32bytes!(state.pub_buf, 34, pt.y)
+            FastField.write_32bytes!(state.pub_buf, 33, pt.y)
             
             BtcCrypto.hash160!(view(state.pub_buf, 1:65), state.h160_buf, state.sha_buf)
             if check_hit(state.targets, state.h160_buf)

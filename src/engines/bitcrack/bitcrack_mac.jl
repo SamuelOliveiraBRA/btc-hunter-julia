@@ -138,7 +138,7 @@ function check_batch(state::BitCrackState)
         
         # 1. Formato Comprimido
         unsafe_store!(p_pub, iseven(pt.y.v1) ? 0x02 : 0x03)
-        FastField.write_32bytes!(state.pub_buf, 2, pt.x)
+        FastField.write_32bytes!(state.pub_buf, 1, pt.x)
         
         # Hashing (A parte mais cara) - Agora turbinado com CommonCrypto
         BtcCrypto.hash160_ptr!(p_pub, 33, p_h160, p_sha)
@@ -159,7 +159,7 @@ function check_batch(state::BitCrackState)
         # 2. Formato Não-comprimido (Se ativo)
         if state.both_formats
             unsafe_store!(p_pub, 0x04)
-            FastField.write_32bytes!(state.pub_buf, 34, pt.y)
+            FastField.write_32bytes!(state.pub_buf, 33, pt.y)
             BtcCrypto.hash160_ptr!(p_pub, 65, p_h160, p_sha)
             
             h1 = unsafe_load(p_h160, 1)
