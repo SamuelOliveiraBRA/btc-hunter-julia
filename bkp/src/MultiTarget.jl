@@ -14,7 +14,6 @@ struct TargetSet
     addr_map :: Dict{Vector{UInt8}, String}
     bloom    :: FastBloom
     use_bloom:: Bool
-    lut      :: Vector{Bool} # Filtro ultra-rápido de 2 bytes (64KB)
 end
 
 """
@@ -26,18 +25,12 @@ function build_target_set(addresses::Vector{String}, decode_fn::Function)::Targe
     hashes   = Set{Vector{UInt8}}()
     addr_map = Dict{Vector{UInt8}, String}()
 
-    lut = zeros(Bool, 65536)
-
     for addr in addresses
         isempty(strip(addr)) && continue
         try
             h = decode_fn(addr)
             push!(hashes, h)
             addr_map[h] = addr
-            
-            # Popular LUT (Primeiros 2 bytes)
-            idx = (Int(h[1]) << 8) | Int(h[2])
-            lut[idx + 1] = true
         catch e
             @warn "Endereço inválido ignorado: '$addr' — $e"
         end
@@ -48,27 +41,17 @@ function build_target_set(addresses::Vector{String}, decode_fn::Function)::Targe
     use_bloom = length(hashes) > 10_000
     bf = BloomFilter.load_massive_targets(collect(hashes))
 
-    return TargetSet(hashes, addr_map, bf, use_bloom, lut)
+    return TargetSet(hashes, addr_map, bf, use_bloom)
 end
 
 """
     check_hit(ts, h160)
-Verifica se um Hash160 está entre os alvos de forma ultra-rápida (O(1)).
+Verifica se um Hash160 está entre os alvos. O(1).
 """
 @inline function check_hit(ts::TargetSet, h160::Vector{UInt8})::Bool
-    # ── Nível 0: Filtro LUT (64KB) ──
-    # Descarta 99.99% dos falsos positivos instantaneamente
-    @inbounds begin
-        idx = (Int(h160[1]) << 8) | Int(h160[2])
-        ts.lut[idx + 1] || return false
-    end
-
-    # ── Nível 1: Bloom Filter (Apenas se DB > 10k) ──
     if ts.use_bloom
         BloomFilter.check_hash(ts.bloom, h160) || return false
     end
-
-    # ── Nível 2: Tabela Hash (Colisão garantida) ──
     return h160 in ts.hashes
 end
 

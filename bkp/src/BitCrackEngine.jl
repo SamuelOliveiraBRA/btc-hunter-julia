@@ -12,7 +12,7 @@ module BitCrackEngine
 using ..FastField
 using ..FastSecp
 using ..BtcCrypto
-using ..SecpEngine
+using ..SecpOptimized
 using ..MultiTarget
 
 export BitCrackState, init_engine, next_batch!, check_batch
@@ -39,24 +39,24 @@ struct BitCrackState
     h160_buf     :: Vector{UInt8}
 end
 
-function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, stride_size::Integer, both_formats::Bool=false)::BitCrackState
+function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, stride_size::Int, both_formats::Bool=false)::BitCrackState
     # 1. Calcular pontos iniciais em Jacobiana (bootstrap)
     points_j = Vector{PointJacobian}(undef, batch_size)
-    curr_j = SecpEngine.scalar_mul(start_key, SecpEngine.G_J)
-    step_j = SecpEngine.G_J
+    curr_j = SecpOptimized.scalar_mul(start_key, SecpOptimized.G_J)
+    step_j = SecpOptimized.G_J
     
     for i in 1:batch_size
         points_j[i] = curr_j
-        curr_j = SecpEngine.add_points_jacobian(curr_j, step_j)
+        curr_j = SecpOptimized.add_points_jacobian(curr_j, step_j)
     end
     
     # 2. Normalizar lote para Afim (uma única inversão pesada aqui)
-    affine_tuples = SecpEngine.batch_normalize(points_j)
+    affine_tuples = SecpOptimized.batch_normalize(points_j)
     points_a = [PointA(FE256(t[1]), FE256(t[2])) for t in affine_tuples]
     
     # 3. Preparar o Stride (S) em Afim
-    stride_j = SecpEngine.scalar_mul(BigInt(stride_size), SecpEngine.G_J)
-    sx, sy = SecpEngine.jacobian_to_affine(stride_j)
+    stride_j = SecpOptimized.scalar_mul(BigInt(stride_size), SecpOptimized.G_J)
+    sx, sy = SecpOptimized.jacobian_to_affine(stride_j)
     stride_a = PointA(FE256(sx), FE256(sy))
     
     # buffers
@@ -127,42 +127,35 @@ function next_batch!(state::BitCrackState)
 end
 
 # ── Verificar lote (Ultra-Fast: pontos já são afins) ──────
-function check_batch(state::BitCrackState)
+function check_batch(state::BitCrackState)::Tuple{Int, Vector{UInt8}}
     n = state.batch_size
-    p_pub  = pointer(state.pub_buf)
-    p_h160 = pointer(state.h160_buf)
-    p_sha  = pointer(state.sha_buf)
     
     for i in 1:n
         @inbounds pt = state.points[i]
         
-        # 1. Formato Comprimido (C) - 33 bytes
-        # Byte de prefixo: 0x02 se Y é par, 0x03 se ímpar.
-        @inbounds unsafe_store!(p_pub, iseven(pt.y.v1) ? 0x02 : 0x03)
-        FastField.write_32bytes!(state.pub_buf, 2, pt.x)
+        # 1. Comprimido (C)
+        # Coordenada X já é affine.x
+        BtcCrypto.big_to_32bytes!(to_big(pt.x), state.pub_buf, 2)
+        state.pub_buf[1] = iseven(to_big(pt.y)) ? 0x02 : 0x03
         
-        # Hashing ultra-veloz via ponteiros (Zero-GC)
-        BtcCrypto.hash160_ptr!(p_pub, 33, p_h160, p_sha)
-        
-        # Check na Lookup Table (O(1))
+        BtcCrypto.hash160!(view(state.pub_buf, 1:33), state.h160_buf, state.sha_buf)
         if check_hit(state.targets, state.h160_buf)
             return (i, copy(state.h160_buf))
         end
 
-        # 2. Formato Não-comprimido (U) - Opcional - 65 bytes
+        # 2. Não-comprimido (U) - Opcional
         if state.both_formats
-            @inbounds unsafe_store!(p_pub, 0x04)
-            # X já está no local correto (bytes 2-33)
-            FastField.write_32bytes!(state.pub_buf, 34, pt.y)
+            state.pub_buf[1] = 0x04
+            BtcCrypto.big_to_32bytes!(to_big(pt.y), state.pub_buf, 34)
             
-            BtcCrypto.hash160_ptr!(p_pub, 65, p_h160, p_sha)
+            BtcCrypto.hash160!(view(state.pub_buf, 1:65), state.h160_buf, state.sha_buf)
             if check_hit(state.targets, state.h160_buf)
                 return (i, copy(state.h160_buf))
             end
         end
     end
 
-    return (0, nothing)
+    return (0, UInt8[])
 end
 
 end # module

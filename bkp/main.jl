@@ -312,69 +312,6 @@ function escolher_motor()
     ConfigModule.save_settings(CFG)
 end
 
-function escolher_buffer()
-    header("Configuração de Buffer")
-    println("  $(W)Tamanho do Buffer (Batch Size):$(X)")
-    println("  $(DIM)Buffers maiores aumentam a velocidade, mas usam mais RAM.$(X)\n")
-    println("  $(G)[1]$(X)  2.048  (Padrão)")
-    println("  $(Y)[2]$(X)  8.192  (Médio)")
-    println("  $(B)[3]$(X)  16.384 (M4 Pro / Max)")
-    println("  $(M)[4]$(X)  32.768 (Extremo)")
-    println("  $(R)[5]$(X)  65.536 (Lendário 🔥)")
-    println("  $(W)[6]$(X)  Personalizado")
-    println("  $(DIM)[0]  Voltar$(X)\n")
-    
-    op = UIModule.input("  Opção: ")
-    if op == "1"; CFG.batch_size = 2048
-    elseif op == "2"; CFG.batch_size = 8192
-    elseif op == "3"; CFG.batch_size = 16384
-    elseif op == "4"; CFG.batch_size = 32768
-    elseif op == "5"; CFG.batch_size = 65536
-    elseif op == "6"
-        s = UIModule.input("  $(W)Tamanho:$(X) ")
-        v = tryparse(Int, strip(s))
-        if v !== nothing && v > 0; CFG.batch_size = v; end
-    elseif op == "0"; return
-    end
-    ConfigModule.save_settings(CFG)
-    println("\n  $(G)✓ Buffer atualizado para $(CFG.batch_size)$(X)"); sleep(1)
-end
-
-function escolher_checkpoint()
-    while true
-        header("Configuração › Checkpoint")
-        println("  Estado: $(CFG.use_checkpoint ? "$(G)Ativo$(X)" : "$(R)Desativado$(X)")")
-        println("  Intervalo Atual: $(C)$(CFG.checkpoint_interval)$(X) segundos\n")
-        
-        println("  $(G)[1]$(X)  Curto     (15s)")
-        println("  $(Y)[2]$(X)  Padrão    (30s)")
-        println("  $(B)[3]$(X)  Médio     (60s)")
-        println("  $(M)[4]$(X)  Longo     (180s)")
-        println("  $(C)[5]$(X)  Personalizado")
-        println("  $(W)[6]$(X)  Ativar/Desativar")
-        println("  $(DIM)[0]  Voltar$(X)\n")
-        
-        op = UIModule.input("  Opção: ")
-        if op == "1"; CFG.checkpoint_interval = 15
-        elseif op == "2"; CFG.checkpoint_interval = 30
-        elseif op == "3"; CFG.checkpoint_interval = 60
-        elseif op == "4"; CFG.checkpoint_interval = 180
-        elseif op == "5"
-            s = UIModule.input("  $(W)Tempo (s):$(X) ")
-            v = tryparse(Int, strip(s))
-            if v !== nothing && v >= 5; CFG.checkpoint_interval = v; end
-        elseif op == "6"
-            CFG.use_checkpoint = !CFG.use_checkpoint
-        elseif op == "0"
-            break
-        end
-        ConfigModule.save_settings(CFG)
-        if op != "0"
-            println("\n  $(G)✓ Configuração salva!$(X)"); sleep(0.8)
-        end
-    end
-end
-
 function config_menu()
     while true
         header("Configurações")
@@ -383,8 +320,6 @@ function config_menu()
         println("  $(G)[3]$(X)  Configurar GPU      $(DIM)($(CFG.gpu ? "Ativa" : "Desativada"))$(X)")
         println("  $(M)[4]  Benchmark / Ajuste$(X)")
         println("  $(Y)[5]  Formato de Busca $(DIM)($(CFG.both_formats ? "Ambos" : "Comprimido"))$(X)")
-        println("  $(M)[6]  Configurar Checkpoint $(DIM)($(CFG.use_checkpoint ? "Ativo" : "Off"))$(X)")
-        println("  $(B)[7]$(X)  Configurar Buffer     $(DIM)($(CFG.batch_size))$(X)")
         println("  $(DIM)[0]  Voltar$(X)\n")
 
         op = UIModule.input("  Opção: ")
@@ -395,8 +330,6 @@ function config_menu()
         elseif op == "5"
             CFG.both_formats = !CFG.both_formats
             ConfigModule.save_settings(CFG)
-        elseif op == "6"; escolher_checkpoint()
-        elseif op == "7"; escolher_buffer()
         elseif op == "0"; break
         end
     end
@@ -481,9 +414,7 @@ function main_menu()
     ranges = load_ranges()
     while true
         header("Menu Principal")
-        if CFG.gpu
-            println("  $(G)[1]$(X)  Escolher motor de busca")
-        end
+        println("  $(G)[1]$(X)  Escolher motor de busca")
         println("  $(Y)[2]$(X)  Escolher Puzzle")
         println("  $(B)[3]$(X)  Iniciar Busca")
         println("  $(C)[4]$(X)  Configurações")

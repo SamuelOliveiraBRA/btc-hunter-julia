@@ -35,17 +35,6 @@ function hash160!(data::AbstractVector{UInt8}, out::AbstractVector{UInt8}, sha_b
     return out
 end
 
-"""
-    hash160_ptr!(data_p::Ptr{UInt8}, dlen::Int, out_p::Ptr{UInt8}, sha_p::Ptr{UInt8})
-Versão ultra-veloz via ponteiros diretos (Zero-GC).
-"""
-@inline function hash160_ptr!(data_p::Ptr{UInt8}, dlen::Int, out_p::Ptr{UInt8}, sha_p::Ptr{UInt8})
-    # SHA256(data, dlen, out)
-    ccall((:SHA256, "libcrypto"), Ptr{Cvoid}, (Ptr{UInt8}, Csize_t, Ptr{UInt8}), data_p, dlen, sha_p)
-    # RIPEMD160(data, dlen, out)
-    ccall((:RIPEMD160, "libcrypto"), Ptr{Cvoid}, (Ptr{UInt8}, Csize_t, Ptr{UInt8}), sha_p, 32, out_p)
-end
-
 function sha256(data::AbstractVector{UInt8})::Vector{UInt8}
     out = zeros(UInt8, 32)
     return sha256!(data, out)
