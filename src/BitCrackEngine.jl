@@ -106,23 +106,37 @@ function next_batch!(state::BitCrackState)
     end
     @inbounds state.inv_dx_buf[1] = curr_inv
     
-    # 3. Adição de Pontos em coordenadas afins
-    @inbounds for i in 1:n
-        inv_dx = state.inv_dx_buf[i]
-        dy     = state.dy_buf[i]
-        Px     = state.points[i].x
-        Py     = state.points[i].y
-        
-        # lambda = dy / dx
-        lambda = mul_mod(dy, inv_dx)
-        
-        # x3 = lambda^2 - Px - Sx
-        x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
-        
-        # y3 = lambda(Px - x3) - Py
-        y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
-        
-        state.points[i] = PointA(x3, y3)
+    # 3. Adição de Pontos em coordenadas afins (Unrolled 16x)
+    i = 1
+    while i <= n - 15
+        @inbounds for k in 0:15
+            idx = i + k
+            inv_dx = state.inv_dx_buf[idx]
+            dy     = state.dy_buf[idx]
+            Px     = state.points[idx].x
+            Py     = state.points[idx].y
+            
+            lambda = mul_mod(dy, inv_dx)
+            x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
+            y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
+            
+            state.points[idx] = PointA(x3, y3)
+        end
+        i += 16
+    end
+    # Resto
+    while i <= n
+        @inbounds begin
+            inv_dx = state.inv_dx_buf[i]
+            dy     = state.dy_buf[i]
+            Px     = state.points[i].x
+            Py     = state.points[i].y
+            lambda = mul_mod(dy, inv_dx)
+            x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
+            y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
+            state.points[i] = PointA(x3, y3)
+        end
+        i += 1
     end
 end
 
@@ -130,29 +144,49 @@ end
 function check_batch(state::BitCrackState)::Tuple{Int, Vector{UInt8}}
     n = state.batch_size
     
-    for i in 1:n
+    i = 1
+    # Ponteiros fixos para velocidade extrema
+    pub_p  = pointer(state.pub_buf)
+    out_p  = pointer(state.h160_buf)
+    sha_p  = pointer(state.sha_buf)
+    
+    # Unrolling 16x para saturar as pipelines do M4
+    while i <= n - 15
+        @inbounds for k in 0:15
+            idx = i + k
+            pt = state.points[idx]
+            
+            # Escreve 32 bytes do X na posição 2:33 (offset 1)
+            FastField.write_32bytes!(state.pub_buf, 1, pt.x)
+            state.pub_buf[1] = iseven(pt.y) ? 0x02 : 0x03
+            
+            # Hashing via Ponteiros Nativo Apple (Direto s/ checks)
+            BtcCrypto.hash160_ptr!(pub_p, 33, out_p, sha_p)
+            
+            if check_hit(state.targets, state.h160_buf)
+                return (idx, copy(state.h160_buf))
+            end
+        end
+        i += 16
+    end
+    # Resto
+    while i <= n
         @inbounds pt = state.points[i]
-        
-        # 1. Comprimido (C)
-        # Coordenada X já é affine.x
-        BtcCrypto.big_to_32bytes!(to_big(pt.x), state.pub_buf, 2)
-        state.pub_buf[1] = iseven(to_big(pt.y)) ? 0x02 : 0x03
-        
-        BtcCrypto.hash160!(view(state.pub_buf, 1:33), state.h160_buf, state.sha_buf)
+        FastField.write_32bytes!(state.pub_buf, 1, pt.x)
+        state.pub_buf[1] = iseven(pt.y) ? 0x02 : 0x03
+        BtcCrypto.hash160_ptr!(pub_p, 33, out_p, sha_p)
         if check_hit(state.targets, state.h160_buf)
             return (i, copy(state.h160_buf))
         end
-
-        # 2. Não-comprimido (U) - Opcional
         if state.both_formats
             state.pub_buf[1] = 0x04
-            BtcCrypto.big_to_32bytes!(to_big(pt.y), state.pub_buf, 34)
-            
-            BtcCrypto.hash160!(view(state.pub_buf, 1:65), state.h160_buf, state.sha_buf)
+            FastField.write_32bytes!(state.pub_buf, 33, pt.y)
+            BtcCrypto.hash160_ptr!(pub_p, 65, out_p, sha_p)
             if check_hit(state.targets, state.h160_buf)
                 return (i, copy(state.h160_buf))
             end
         end
+        i += 1
     end
 
     return (0, UInt8[])

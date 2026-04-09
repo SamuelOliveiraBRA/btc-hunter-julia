@@ -107,8 +107,9 @@ end
 end
 
 @inline function mul_mod(a::FE256, b::FE256)::FE256
-    # 256x256 -> 512 Multiplicação Escolar Unrolled
-    r1, c = mac_with_carry(a.v1, b.v1, 0x0000000000000000, 0x0000000000000000)
+    K = 0x00000001000003d1
+    # Reduzimos o numero de macros para deixar o compilador otimizar o fluxo de registradores
+    @inline r1, c = mac_with_carry(a.v1, b.v1, 0x0000000000000000, 0x0000000000000000)
     r2, c = mac_with_carry(a.v1, b.v2, 0x0000000000000000, c)
     r3, c = mac_with_carry(a.v1, b.v3, 0x0000000000000000, c)
     r4, c = mac_with_carry(a.v1, b.v4, 0x0000000000000000, c)
@@ -146,27 +147,17 @@ end
     r2, cb = add_carry_native(r2, h2, UInt64(cb))
     r3, cb = add_carry_native(r3, h3, cb)
     r4, cb = add_carry_native(r4, h4, cb)
-    c2     = cb + h5 
-
-    h1, c = mac_with_carry(c2, K, 0x0000000000000000, 0x0000000000000000)
-    h2 = c
-
-    r1, cb = Base.add_with_overflow(r1, h1)
-    r2, cb = add_carry_native(r2, h2, UInt64(cb))
-    r3, cb = add_carry_native(r3, 0x0000000000000000, cb)
-    r4, cb = add_carry_native(r4, 0x0000000000000000, cb)
-
-    if cb != 0 || (r4 == _P_V4 && r3 == _P_V3 && r2 == _P_V2 && r1 >= _P_V1)
-        r1, cb = Base.add_with_overflow(r1, K)
-        r2, cb = add_carry_native(r2, 0x0000000000000000, UInt64(cb))
-        r3, cb = add_carry_native(r3, 0x0000000000000000, cb)
-        r4, cb = add_carry_native(r4, 0x0000000000000000, cb)
+    
+    # Redução final ultra-compacta (Versão M4 Extreme)
+    if (cb + h5) != 0 || (r4 == _P_V4 && r3 == _P_V3 && r2 == _P_V2 && r1 >= _P_V1)
+        r1, _ = Base.add_with_overflow(r1, K)
     end
 
     return FE256(r1, r2, r3, r4)
 end
 
 @inline function sqr_mod(a::FE256)::FE256
+    # Versão otimizada de square poderia vir aqui, por enquanto usa mul
     return mul_mod(a, a)
 end
 

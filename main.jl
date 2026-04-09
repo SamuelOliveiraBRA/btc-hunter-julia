@@ -529,7 +529,14 @@ function main()
 
     # Detecção automática de GPU
     try
-        if CUDA.functional()
+        if Sys.isapple() && Metal.functional()
+            dev = Metal.device()
+            CFG.gpu_name = dev.name
+            # M4 tem memória unificada, o total costuma ser limitado pelo sistema
+            # mas vamos reportar como ativa
+            CFG.gpu_mem = "Unified Memory (M4)"
+            CFG.gpu = user_wants_gpu
+        elseif CUDA.functional()
             dev = CUDA.device()
             CFG.gpu_name = CUDA.name(dev)
             vram_gb = CUDA.totalmem(dev) / (1024^3)
