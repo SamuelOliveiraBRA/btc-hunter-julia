@@ -469,6 +469,18 @@ function pre_scan_menu()
         return
     end
 
+    # ── Mapa Visual e Confirmação ──────────────────────────
+    r_total = Float64(r_size) > 0 ? Float64(r_size) : 1.0
+    p_start = Float64(start_k - r_min) / r_total
+    p_end   = Float64(end_k - r_min) / r_total
+    
+    println("\n  $(W)Mapa Visual de Range:$(X)")
+    println("  " * UIModule.range_map(p_start, p_end))
+    println(UIModule.DIM, @sprintf("  Início: %.4f%%  │  Fim: %.4f%%", p_start*100, p_end*100), UIModule.X)
+    
+    confirm = UIModule.input("\n  $(G)Deseja iniciar a busca?$(X) [Enter/0]: ")
+    confirm == "0" && return
+
     # ── Início do Scan ─────────────────────────────────────
     if mode == 2 # Reverso
         scan_dashboard([CFG.wallet_addr], r_min, r_max, mode, end_k, start_k, puzzle_id=CFG.wallet_num)
@@ -481,9 +493,7 @@ function main_menu()
     ranges = load_ranges()
     while true
         header("Menu Principal")
-        if CFG.gpu
-            println("  $(G)[1]$(X)  Escolher motor de busca")
-        end
+        println("  $(G)[1]$(X)  Escolher motor de busca")
         println("  $(Y)[2]$(X)  Escolher Puzzle")
         println("  $(B)[3]$(X)  Iniciar Busca")
         println("  $(C)[4]$(X)  Configurações")

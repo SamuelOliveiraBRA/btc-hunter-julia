@@ -4,7 +4,7 @@ using Printf
 using ..ConfigModule: CFG
 
 export G, R, B, Y, M, C, W, DIM, X, BOLD, UL
-export clear, goto, hide_cursor, show_cursor, input, fmt_num, fmt_time, progress_bar
+export clear, goto, hide_cursor, show_cursor, input, fmt_num, fmt_time, progress_bar, range_map
 export box_line, box_top, box_sep, box_bot, box_split, header, splash, print_found_key
 
 # ── Cores ANSI ────────────────────────────────────────────
@@ -44,8 +44,28 @@ end
 fmt_time(s) = @sprintf("%02d:%02d:%02d", s÷3600, (s%3600)÷60, s%60)
 
 function progress_bar(pct::Float64, width::Int=36)
-    filled = round(Int, pct * width)
+    filled = round(Int, clamp(pct, 0, 1) * width)
     "█" ^ filled * "░" ^ (width - filled)
+end
+
+function range_map(p_start::Float64, p_end::Float64, width::Int=46)
+    # Garante ordem para o desenho
+    s, e = min(p_start, p_end), max(p_start, p_end)
+    s_idx = round(Int, clamp(s, 0.0, 1.0) * width)
+    e_idx = round(Int, clamp(e, 0.0, 1.0) * width)
+    
+    # Construção da barra
+    bar = ""
+    for i in 1:width
+        if i < s_idx
+            bar *= DIM * "░" * X
+        elseif i <= e_idx
+            bar *= G * "█" * X
+        else
+            bar *= DIM * "░" * X
+        end
+    end
+    return "[ " * bar * " ]"
 end
 
 # ── Box helpers ───────────────────────────────────────────
