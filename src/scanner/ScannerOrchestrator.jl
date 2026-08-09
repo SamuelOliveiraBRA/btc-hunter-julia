@@ -16,6 +16,8 @@ using Dates, Printf, Random, JSON
 # Isso garante que nenhuma configuração de carteira fique hardcoded no código.
 _load_ranges_data() = JSON.parsefile(joinpath(@__DIR__, "..", "..", "data", "ranges.json"))["ranges"]
 
+using ..Engines: KangarooEngine
+
 export scan_dashboard, run_worker_loop
 
 """
@@ -47,15 +49,34 @@ function scan_dashboard(
     # ── Multi-target setup ────────────────────────────────
     target_set = build_target_set(target_addrs, BtcCrypto.base58_to_hash160)
     
-    # Para o motor GPU, tenta obter a chave pública do ranges.json (campo "pubkey").
-    # Se disponível, substitui o alvo pelo X-coord da pubkey, permitindo comparação
-    # direta e eficiente na GPU. NUNCA usa pubkey hardcoded no código.
+    # ── Pubkey loader (Kangaroo / BSGS) ────────────────────
+    pubkey_x = ""
+    pubkey_y = ""
+    if CFG.engine == :bsgs && puzzle_id > 0
+        ranges_data = _load_ranges_data()
+        if puzzle_id <= length(ranges_data)
+            pk = get(ranges_data[puzzle_id], "pubkey", "")
+            if !isempty(pk)
+                parts = split(strip(pk))
+                if length(parts) >= 2
+                    pubkey_x = parts[1]
+                    pubkey_y = parts[2]
+                end
+            end
+        end
+        if isempty(pubkey_x)
+            println("  $(R)⚠ Puzzle #$(puzzle_id) não tem chave pública no ranges.json.$(X)")
+            println("  $(DIM)  Kangaroo/BSGS exige pubkey. Use outro motor.$(X)")
+            sleep(2)
+            return
+        end
+    end
+
     gpu_has_pubkey = false
     if CFG.engine == :gpu && puzzle_id > 0
         ranges_data = _load_ranges_data()
         if puzzle_id <= length(ranges_data)
-            addr = isempty(target_addrs) ? ranges_data[puzzle_id]["endereco"] : target_addrs[1]
-            gpu_has_pubkey = false # Strict compliance: no pubkeys fetched or utilized.
+            gpu_has_pubkey = false
         end
     end
     n_targets  = target_count(target_set)
@@ -74,13 +95,13 @@ function scan_dashboard(
     if CFG.engine == :gpu
         header("Iniciando Busca...")
         println(box_top(" Inicializando Motor GPU "))
-        println(box_line(" $(DIM)Compilando Metal Kernel (JIT)... Aguarde$(X) "))
+        println(box_line(" $(DIM)Compilando CUDA Kernel (JIT)... Aguarde$(X) "))
         println(box_bot())
         try
-            KeyhunterEngine.gpu_scan_batch(target_set.hashes, [BigInt(1)], 8192)
-            KeyhunterEngine.GPU_STATE[:d_points] = nothing
-            KeyhunterEngine.GPU_STATE[:d_found] = nothing
-            KeyhunterEngine.GPU_STATE[:last_range] = nothing
+            GpuEngine.gpu_scan_batch(target_set.hashes, [BigInt(1)], 8192)
+            GpuEngine.GPU_STATE[:d_points] = nothing
+            GpuEngine.GPU_STATE[:d_found] = nothing
+            GpuEngine.GPU_STATE[:last_range] = nothing
         catch
         end
     end
@@ -183,10 +204,34 @@ function scan_dashboard(
         end
     end
 
+    # ── Kangaroo Engine ───────────────────────────────────
+    if CFG.engine == :bsgs
+        @spawn begin
+            result = KangarooEngine.find_key_with_kangaroo(pubkey_x, pubkey_y, rng_min, rng_max)
+            if result >= 0
+                found_key[] = result
+                pk_bytes = BtcCrypto.priv_to_pub_compressed(result)
+                h160 = BtcCrypto.hash160(pk_bytes)
+                found_addr[] = BtcUtils.hash160_to_address(h160)
+                stop[] = true
+            end
+            atomic_add!(keys_done, 1)
+        end
+        foreach(wait, [progress_task])
+        show_cursor()
+        if found_key[] >= 0
+            println("\n  $(G)✅ Chave encontrada via Kangaroo!$(X)")
+        else
+            println("\n  $(Y)Kangaroo concluído — chave não encontrada no intervalo.$(X)")
+        end
+        println("\n  $(DIM)Pressione ENTER para voltar...$(X)")
+        readline()
+        return
+    end
+
     # ── Workers de busca ──────────────────────────────────
-    # Verificação de compatibilidade GPU antes de lançar workers
-    if CFG.engine == :gpu && !KeyhunterEngine.check_compatibility()
-        CFG.engine = :bitcrack  # fallback para BitCrack quando GPU é incompatível
+    if CFG.engine == :gpu && !GpuEngine.check_compatibility()
+        CFG.engine = :bitcrack
     end
 
     # Se usar GPU, limitamos a 1 worker de orquestração para não competir com o kernel
@@ -233,6 +278,8 @@ function scan_dashboard(
                 local_count = 0
                 batch_counter = 0
                 local_batch_idx = 0
+                random_batches_in_chunk = 0 # Contador para saltos aleatórios
+                RAND_JUMP_LIMIT = 256       # Quantos lotes processar antes de pular (aprox 4M chaves)
 
                 while !stop[]
                     res = BitCrackEngine.check_batch(state)
@@ -249,17 +296,17 @@ function scan_dashboard(
                     local_count += batch_sz
                     batch_counter += 1
                     
+                    # Sincroniza progresso a cada 64 lotes para todos os modos (Equilíbrio UI vs Performance)
+                    if mod(batch_counter, 64) == 0
+                        atomic_add!(keys_done, local_count)
+                        local_count = 0
+                    end
+
                     if mode == 1 || mode == 2
                         current_pos = curr_base + BigInt(local_batch_idx * (batch_sz * n_threads))
                         if mode == 1 && current_pos > end_key; break; end
                         if mode == 2 && current_pos < end_key; break; end
                         
-                        # Sincroniza progresso a cada 16 lotes (Suaviza a Velocidade na UI)
-                        if mod(batch_counter, 16) == 0
-                            atomic_add!(keys_done, local_count)
-                            local_count = 0
-                        end
-
                         # Sincroniza Chave/Checkpoint a cada 256 lotes (Reduz contenção de memória)
                         if batch_counter >= 256
                             last_key[] = current_pos 
@@ -269,13 +316,33 @@ function scan_dashboard(
                         BitCrackEngine.next_batch!(state)
                         local_batch_idx += 1
                     else
-                        # Modo Aleatório
+                        # Modo Aleatório (Chunked Random)
                         stop[] && break
-                        range_size = safe_rng_max > start_key ? safe_rng_max - start_key : BigInt(1)
-                        curr_base = start_key + rand(BigInt(0):range_size)
-                        state = BitCrackEngine.init_engine(curr_base, target_set, batch_sz, Int(stride_for_engine), CFG.both_formats)
-                        local_batch_idx = 0
-                        last_key[] = curr_base
+                        
+                        if random_batches_in_chunk < RAND_JUMP_LIMIT
+                            # Continua na vizinhança atual (ALTA VELOCIDADE)
+                            BitCrackEngine.next_batch!(state)
+                            local_batch_idx += 1
+                            random_batches_in_chunk += 1
+                            
+                            # Atualiza a chave atual periodicamente
+                            if batch_counter >= 256
+                                last_key[] = curr_base + BigInt(local_batch_idx * (batch_sz * n_threads))
+                                batch_counter = 0
+                            end
+                        else
+                            # Saltou! (Usa re-inicialização in-place para estabilidade de memória)
+                            custom_end = min(safe_rng_max, end_key)
+                            range_size = custom_end > start_key ? custom_end - start_key : BigInt(1)
+                            curr_base = start_key + rand(BigInt(0):range_size)
+                            
+                            BitCrackEngine.reinit_engine!(state, curr_base)
+                            
+                            local_batch_idx = 0
+                            random_batches_in_chunk = 0
+                            last_key[] = curr_base
+                            batch_counter = 0
+                        end
                     end
                     yield()
                 end
@@ -286,9 +353,9 @@ function scan_dashboard(
                 
                 while !stop[]
                     # Executa o batch na GPU
-                    res_idx = KeyhunterEngine.gpu_scan_batch(target_set.hashes, [curr_base], gpu_batch)
+                    res_idx = GpuEngine.gpu_scan_batch(target_set.hashes, [curr_base], gpu_batch)
                     
-                    actual_scanned = KeyhunterEngine.GPU_STATE[:last_batch]
+                    actual_scanned = GpuEngine.GPU_STATE[:last_batch]
                     atomic_add!(keys_done, actual_scanned)
 
                     if res_idx > 0

@@ -24,6 +24,7 @@ mutable struct Config
     gpu::Bool
     gpu_name::String
     gpu_mem::String
+    gpu_intensity::Int
 end
 
 const SETTINGS_FILE = "config/settings.json"
@@ -42,8 +43,7 @@ end
 function load_settings()
     # Padrões iniciais
     default_cfg = Config(
-        10, false, 0, "", 0,
-        "0x0", "0x0", "", 0, true, 16384, false, true, 30, :bitcrack, false, "", ""
+        10, false, 0, "", 0x0, "0x0", "0x0", "", 0, true, 32768, false, true, 30, :bitcrack, false, "", "", 256
     )
 
     if !isfile(SETTINGS_FILE)

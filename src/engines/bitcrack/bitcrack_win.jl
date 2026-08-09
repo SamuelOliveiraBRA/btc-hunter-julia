@@ -81,10 +81,22 @@ function next_batch!(state::BitCrackState)
     inv_dx_buf = state.inv_dx_buf
     points = state.points
     
-    # 1. Calcular Denominadores e Numeradores
-    @inbounds for i in 1:n
-        dx_buf[i] = sub_mod(Sx, points[i].x)
-        dy_buf[i] = sub_mod(Sy, points[i].y)
+    # 1. Calcular Denominadores e Numeradores (Unrolled 16x)
+    i = 1
+    while i <= n - 15
+        @inbounds @fastmath for j in 0:15
+            idx = i + j
+            dx_buf[idx] = sub_mod(Sx, points[idx].x)
+            dy_buf[idx] = sub_mod(Sy, points[idx].y)
+        end
+        i += 16
+    end
+    while i <= n
+        @inbounds begin
+            dx_buf[i] = sub_mod(Sx, points[i].x)
+            dy_buf[i] = sub_mod(Sy, points[i].y)
+        end
+        i += 1
     end
     
     # 2. Inversão em Lote (Montgomery)
@@ -102,20 +114,37 @@ function next_batch!(state::BitCrackState)
     end
     @inbounds inv_dx_buf[1] = curr_inv
     
-    # 3. Adição de Pontos (Loop Unrolling 16x)
+    # 3. Adição de Pontos (Pipeline Interleaving 4x4)
     i = 1
     while i <= n - 15
-        @inbounds for j in 0:15
-            idx = i + j
-            inv_dx = inv_dx_buf[idx]
-            dy     = dy_buf[idx]
-            Px     = points[idx].x
-            Py     = points[idx].y
-            
-            lambda = mul_mod(dy, inv_dx)
-            x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
-            y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
-            points[idx] = PointA(x3, y3)
+        @inbounds begin
+            for block in 0:3
+                base = i + block * 4
+                
+                # Intercalar a primeira parte (Lambda) para 4 pontos
+                lb1 = mul_mod(dy_buf[base],   inv_dx_buf[base])
+                lb2 = mul_mod(dy_buf[base+1], inv_dx_buf[base+1])
+                lb3 = mul_mod(dy_buf[base+2], inv_dx_buf[base+2])
+                lb4 = mul_mod(dy_buf[base+3], inv_dx_buf[base+3])
+                
+                # Intercalar a segunda parte (X3, Y3)
+                p1 = points[base]; p2 = points[base+1]; p3 = points[base+2]; p4 = points[base+3]
+                
+                x3_1 = sub_mod(sub_mod(sqr_mod(lb1), p1.x), Sx)
+                x3_2 = sub_mod(sub_mod(sqr_mod(lb2), p2.x), Sx)
+                x3_3 = sub_mod(sub_mod(sqr_mod(lb3), p3.x), Sx)
+                x3_4 = sub_mod(sub_mod(sqr_mod(lb4), p4.x), Sx)
+                
+                y3_1 = sub_mod(mul_mod(lb1, sub_mod(p1.x, x3_1)), p1.y)
+                y3_2 = sub_mod(mul_mod(lb2, sub_mod(p2.x, x3_2)), p2.y)
+                y3_3 = sub_mod(mul_mod(lb3, sub_mod(p3.x, x3_3)), p3.y)
+                y3_4 = sub_mod(mul_mod(lb4, sub_mod(p4.x, x3_4)), p4.y)
+                
+                points[base]   = PointA(x3_1, y3_1)
+                points[base+1] = PointA(x3_2, y3_2)
+                points[base+2] = PointA(x3_3, y3_3)
+                points[base+3] = PointA(x3_4, y3_4)
+            end
         end
         i += 16
     end
@@ -124,11 +153,10 @@ function next_batch!(state::BitCrackState)
         @inbounds begin
             inv_dx = inv_dx_buf[i]
             dy     = dy_buf[i]
-            Px     = points[i].x
-            Py     = points[i].y
+            p      = points[i]
             lambda = mul_mod(dy, inv_dx)
-            x3 = sub_mod(sub_mod(sqr_mod(lambda), Px), Sx)
-            y3 = sub_mod(mul_mod(lambda, sub_mod(Px, x3)), Py)
+            x3     = sub_mod(sub_mod(sqr_mod(lambda), p.x), Sx)
+            y3     = sub_mod(mul_mod(lambda, sub_mod(p.x, x3)), p.y)
             points[i] = PointA(x3, y3)
         end
         i += 1

@@ -49,12 +49,14 @@ function progress_bar(pct::Float64, width::Int=36)
 end
 
 function range_map(p_start::Float64, p_end::Float64, width::Int=46)
-    # Garante ordem para o desenho
     s, e = min(p_start, p_end), max(p_start, p_end)
     s_idx = round(Int, clamp(s, 0.0, 1.0) * width)
     e_idx = round(Int, clamp(e, 0.0, 1.0) * width)
     
-    # Construção da barra
+    if s_idx == e_idx && e > s
+        e_idx = min(width, e_idx + 1)
+    end
+    
     bar = ""
     for i in 1:width
         if i < s_idx
@@ -96,64 +98,69 @@ function box_split(left, right, lw=30, color_l="", color_r="")
     "║ $(color_l)$(left)$(X)$(repeat(" ", pad_l)) │ $(color_r)$(right)$(X)$(repeat(" ", pad_r)) ║"
 end
 
-function header(subtitle="")
+function header(subtitle=""; compact=false)
     clear()
-    # Logo BTC ASCII Art
-    println()
-    println("$(BOLD)$(B)  ██████╗ ████████╗ ██████╗")
-    println("  ██╔══██╗╚══██╔══╝██╔════╝")
-    println("  ██████╔╝   ██║   ██║")
-    println("  ██╔══██╗   ██║   ██║")
-    println("  ██████╔╝   ██║   ╚██████╗")
-    println("  ╚═════╝    ╚═╝    ╚═════╝$(X)\n")
+    if !compact
+        println()
+        println("$(BOLD)$(B)  ██████╗ ████████╗ ██████╗")
+        println("  ██╔══██╗╚══██╔══╝██╔════╝")
+        println("  ██████╔╝   ██║   ██║")
+        println("  ██╔══██╗   ██║   ██║")
+        println("  ██████╔╝   ██║   ╚██████╗")
+        println("  ╚═════╝    ╚═╝    ╚═════╝$(X)\n")
+    end
 
-    total_threads = max(Sys.CPU_THREADS, Threads.nthreads())
-    cpu_bar = G * ("■" ^ max(0, CFG.cpus)) * DIM * ("□" ^ max(0, total_threads - CFG.cpus)) * X * " $(DIM)$(CFG.cpus)/$(total_threads)$(X)"
+    active_threads = Threads.nthreads()
+    total_slots = max(active_threads, CFG.cpus, 1)
+    cpu_bar = G * ("■" ^ active_threads) * DIM * ("□" ^ max(0, total_slots - active_threads)) * X * " $(DIM)$(active_threads)/$(total_slots)$(X)"
     gpu_bar = CFG.gpu ? (C * ("■" ^ (clamp(CFG.gpu_intensity ÷ 256, 1, 8))) * DIM * ("□" ^ (max(0, 8 - (CFG.gpu_intensity ÷ 256)))) * X * " $(DIM)$(CFG.gpu_intensity)$(X)") : (DIM * "Desativada" * X)
     inet_s  = CFG.internet ? G*"● Ativa"*X : DIM*"○ Desativada"*X
     fmt_s   = CFG.both_formats ? C*"C+U"*X : G*"Comprimido"*X
+    b_size = CFG.engine == :gpu ? (CFG.gpu_intensity * 1024) : CFG.batch_size
 
     println(box_top("$(BOLD)$(W) BTC HUNTER JULIA v1.5 $(X)"))
-    eng_s   = ""
-    if CFG.engine == :bitcrack; eng_s = M*"BitCrack"*X
-    elseif CFG.engine == :bsgs; eng_s = Y*"BSGS"*X
-    elseif CFG.engine == :gpu
-        eng_s = Sys.isapple() ? C*"Metal/Apple"*X : C*"CUDA/GPU"*X
-    else; eng_s = G*"SecpOpt"*X
-    end
-    hw = get_hw_info()
-    println(box_split("$(Y)v1.5.0$(X)  Julia Edition", "$(B)Dev. Samuel Oliveira$(X)"))
-    println(box_sep())
-    println(box_split("$(DIM)SISTEMA:$(X) $(W)$(hw.os) @ $(hw.speed)$(X)", "$(DIM)RAM:$(X) $(W)$(hw.ram)$(X)"))
-    println(box_sep())
-    
-    if CFG.gpu && !isempty(CFG.gpu_name)
-        println(box_line("$(DIM)GPU:    $(X) $(C)$(CFG.gpu_name)$(X) $(DIM)($(CFG.gpu_mem))$(X)"))
-        println(box_sep())
-        println(box_split("$(W)CPUs$(X)  $cpu_bar", "$(W)GPU$(X)   $gpu_bar"))
-    else
-        println(box_line("$(W)CPUs$(X)  $cpu_bar"))
-    end
-    b_size = CFG.engine == :gpu ? (CFG.gpu_intensity * 1024) : CFG.batch_size
-    println(box_split("$(W)Buffer$(X)  $(C)$(fmt_num(b_size))$(X)", "$(W)Internet$(X)  $inet_s"))
-    println(box_split("$(W)Motor$(X)  $eng_s", "$(W)Formato$(X)  $fmt_s"))
 
-    if CFG.wallet_num > 0
+    if !compact
+        eng_s   = ""
+        if CFG.engine == :bitcrack; eng_s = M*"BitCrack"*X
+        elseif CFG.engine == :bsgs; eng_s = Y*"BSGS"*X
+        elseif CFG.engine == :gpu
+            eng_s = Sys.isapple() ? C*"Metal/Apple"*X : C*"CUDA/GPU"*X
+        else; eng_s = G*"SecpOpt"*X
+        end
+        hw = get_hw_info()
+        println(box_split("$(Y)v1.5.1$(X)  Julia Edition", "$(B)Dev. Samuel Oliveira$(X)"))
         println(box_sep())
-        st  = CFG.wallet_status == 0 ? "$(G)✓ Disponível$(X)" : "$(R)✗ Encontrada$(X)"
-        _min = replace(CFG.interval_min, "0x" => "", "0X" => "")
-        _max = replace(CFG.interval_max, "0x" => "", "0X" => "")
-        rng_size = parse(BigInt, _max, base=16) - parse(BigInt, _min, base=16) + 1
-        addr_short = length(CFG.wallet_addr) > 34 ? CFG.wallet_addr[1:34] : CFG.wallet_addr
-        println(box_line("$(Y)#$(CFG.wallet_num)$(X)  $(W)$(addr_short)$(X)"))
+        println(box_split("$(DIM)SISTEMA:$(X) $(W)$(hw.os) @ $(hw.speed)$(X)", "$(DIM)RAM:$(X) $(W)$(hw.ram)$(X)"))
         println(box_sep())
-        saldo_s = isempty(CFG.saldo) ? "$(DIM)---$(X)" : "$(G)$(CFG.saldo) BTC$(X)"
-        println(box_split("$(W)Status$(X) $st", "$(W)Saldo$(X)  $saldo_s"))
-        println(box_split(
-            "$(DIM)Min:$(X)  $(Y)$(CFG.interval_min)$(X)",
-            "$(DIM)Max:$(X)  $(Y)$(CFG.interval_max)$(X)"
-        ))
-        println(box_line("$(W)Range$(X)  $(C)$(fmt_num(rng_size))$(X) chaves"))
+        
+        if CFG.gpu && !isempty(CFG.gpu_name)
+            println(box_line("$(DIM)GPU:    $(X) $(C)$(CFG.gpu_name)$(X) $(DIM)($(CFG.gpu_mem))$(X)"))
+            println(box_sep())
+            println(box_split("$(W)CPUs$(X)  $cpu_bar", "$(W)GPU$(X)   $gpu_bar"))
+        else
+            println(box_line("$(W)CPUs$(X)  $cpu_bar"))
+        end
+        println(box_split("$(W)Buffer$(X)  $(C)$(fmt_num(b_size))$(X)", "$(W)Internet$(X)  $inet_s"))
+        println(box_split("$(W)Motor$(X)  $eng_s", "$(W)Formato$(X)  $fmt_s"))
+
+        if CFG.wallet_num > 0
+            println(box_sep())
+            st  = CFG.wallet_status == 0 ? "$(G)✓ Disponível$(X)" : "$(R)✗ Encontrada$(X)"
+            _min = replace(CFG.interval_min, "0x" => "", "0X" => "")
+            _max = replace(CFG.interval_max, "0x" => "", "0X" => "")
+            rng_size = parse(BigInt, _max, base=16) - parse(BigInt, _min, base=16) + 1
+            addr_short = length(CFG.wallet_addr) > 34 ? CFG.wallet_addr[1:34] : CFG.wallet_addr
+            println(box_line("$(Y)#$(CFG.wallet_num)$(X)  $(W)$(addr_short)$(X)"))
+            println(box_sep())
+            saldo_s = isempty(CFG.saldo) ? "$(DIM)---$(X)" : "$(G)$(CFG.saldo) BTC$(X)"
+            println(box_split("$(W)Status$(X) $st", "$(W)Saldo$(X)  $saldo_s"))
+            println(box_split(
+                "$(DIM)Min:$(X)  $(Y)$(CFG.interval_min)$(X)",
+                "$(DIM)Max:$(X)  $(Y)$(CFG.interval_max)$(X)"
+            ))
+            println(box_line("$(W)Range$(X)  $(C)$(fmt_num(rng_size))$(X) chaves"))
+        end
     end
 
     if !isempty(subtitle)

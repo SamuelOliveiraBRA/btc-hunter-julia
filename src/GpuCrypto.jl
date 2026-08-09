@@ -1,6 +1,11 @@
 module GpuCrypto
 
-using CUDA
+if Sys.isapple()
+    # Metal não usa CUDA types, mas mantemos a estrutura para compatibilidade
+    # As funções GPU não serão usadas no macOS
+else
+    using CUDA
+end
 export GpuUInt256, add_gpu, sub_gpu, mul_gpu, modP_gpu, PointGpuJacobian, add_gpu_jacobian, gpu_scan_batch, jacobian_to_affine_gpu, invP_gpu, pow_gpu
 
 # Estrutura de 256 bits para GPU (4 x UInt64)

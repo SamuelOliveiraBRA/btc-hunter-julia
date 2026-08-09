@@ -1,6 +1,8 @@
 module GpuHashing
 
-using CUDA
+if !Sys.isapple()
+    using CUDA
+end
 using ..GpuCrypto
 
 export sha256_single_block_gpu, ripemd160_single_block_gpu, hash160_gpu

@@ -396,25 +396,25 @@
     {
       "min": "0x20000000000000000",
       "max": "0x3ffffffffffffffff",
-      "status": 0,
+      "status": 1,
       "endereco": "13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so"
     },
     {
       "min": "0x40000000000000000",
       "max": "0x7ffffffffffffffff",
-      "status": 0,
+      "status": 1,
       "endereco": "1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9"
     },
     {
       "min": "0x80000000000000000",
       "max": "0xfffffffffffffffff",
-      "status": 0,
+      "status": 1,
       "endereco": "1MVDYgVaSN6iKKEsbzRUAYFrYJadLYZvvZ"
     },
     {
       "min": "0x100000000000000000",
       "max": "0x1fffffffffffffffff",
-      "status": 0,
+      "status": 1,
       "endereco": "19vkiEajfhuZ8bs8Zu2jgmC6oqZbWqhxhG"
     },
     {
@@ -811,7 +811,8 @@
       "endereco": "16RGFo6hjq9ym6Pj7N5H7L1NR1rVPJyw2v",
       "max": "0x7fffffffffffffffffffffffffffffffff",
       "min": "0x4000000000000000000000000000000000",
-      "status": 0
+      "status": 0,
+      "pubkey": "02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16"
     },
     {
       "endereco": "1UDHPdovvR985NrWSkdWQDEQ1xuRiTALq",
@@ -841,7 +842,8 @@
       "endereco": "1QKBaU6WAeycb3DbKbLBkX7vJiaS8r42Xo",
       "max": "0xfffffffffffffffffffffffffffffffffff",
       "min": "0x80000000000000000000000000000000000",
-      "status": 0
+      "status": 0,
+      "pubkey": "031f6a332d3c5c4f2de2378c012f429cd109ba07d69690c6c701b6bb87860d6640"
     },
     {
       "endereco": "1CD91Vm97mLQvXhrnoMChhJx4TP9MaQkJo",
@@ -871,7 +873,8 @@
       "endereco": "19GpszRNUej5yYqxXoLnbZWKew3KdVLkXg",
       "max": "0x1ffffffffffffffffffffffffffffffffffff",
       "min": "0x1000000000000000000000000000000000000",
-      "status": 0
+      "status": 0,
+      "pubkey": "03afdda497369e219a2c1c369954a930e4d3740968e5e4352475bcffce3140dae5"
     },
     {
       "endereco": "1M7ipcdYHey2Y5RZM34MBbpugghmjaV89P",

@@ -4,7 +4,7 @@ module Engines
 # Engines.jl — Despachante de Motores Multi-plataforma
 # ═══════════════════════════════════════════════════════════════════
 
-export BitCrackEngine, BSGSEngine, GpuEngine
+export BitCrackEngine, BSGSEngine, GpuEngine, KangarooEngine
 
 # 1. Detectar Plataforma
 const IS_MAC     = Sys.isapple()
@@ -21,6 +21,7 @@ using ..MultiTarget
 using ..BtcUtils
 using ..SecpOptimized
 using ..GpuCrypto
+using ..BtcCrypto_M4
 
 # 3. Carregar Motores Específicos
 if IS_MAC
@@ -33,6 +34,7 @@ end
 
 # Motores Originais / Cross-platform
 include("../BSGSEngine.jl")
+include("../KangarooEngine.jl")
 include("../scanner/GpuScanner.jl") # Keyhunter
 
 const GpuEngine = GpuScanner # Alias amigável

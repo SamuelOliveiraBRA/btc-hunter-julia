@@ -1,4 +1,3 @@
-using Pkg; Pkg.activate(".")
 # ═══════════════════════════════════════════════════════════
 #  BTC HUNTER JULIA  ·  Julia Edition  ·  v1.5.0
 #  Arquitetura Modular & Performance Otimizada
@@ -17,12 +16,13 @@ end
 include("src/Base58.jl")
 include("src/BtcCrypto.jl")
 include("src/BtcUtils.jl")
+include("src/BtcCrypto_M4.jl")
 include("src/CheckpointManager.jl")
 include("src/PuzzleData.jl")
 include("src/BloomFilter.jl")
 include("src/MultiTarget.jl")
 
-using .Base58, .BtcCrypto, .BtcUtils
+using .Base58, .BtcCrypto, .BtcUtils, .BtcCrypto_M4
 using .CheckpointManager
 using .PuzzleData
 using .BloomFilter
@@ -45,7 +45,7 @@ include("src/scanner/ScannerOrchestrator.jl")
 using .ScannerOrchestrator
 
 
-using Dates, Printf, Random, JSON, CUDA
+using Dates, Printf, Random, JSON
 
 # ── Utilitários Adicionais ───────────────────────────────
 hex2big(s) = parse(BigInt, replace(strip(s), "0x" => "", "0X" => ""), base=16)
@@ -88,10 +88,6 @@ function parse_cli_args()
             val = tryparse(Int, args[i+1])
             if !isnothing(val); CFG.batch_size = val; end
             i += 1
-        elseif arg == "--cpus" && i < length(args)
-            val = tryparse(Int, args[i+1])
-            if !isnothing(val); CFG.cpus = val; end
-            i += 1
         elseif arg == "--checkpoint" && i < length(args)
             val = args[i+1]
             if val == "off"
@@ -107,13 +103,20 @@ function parse_cli_args()
         elseif arg == "--fim" && i < length(args)
             p_end = tryparse(Float64, args[i+1])
             i += 1
-        elseif arg == "--hstart" && i < length(args)
+        elseif (arg == "--hstart" || arg == "--min") && i < length(args)
             h_start = args[i+1]
             use_hex = true
             i += 1
-        elseif arg == "--hend" && i < length(args)
+        elseif (arg == "--hend" || arg == "--max") && i < length(args)
             h_end = args[i+1]
             use_hex = true
+            i += 1
+        elseif (arg == "--cpus" || arg == "--threads") && i < length(args)
+            val = tryparse(Int, args[i+1])
+            if !isnothing(val)
+                CFG.cpus = val
+                ConfigModule.save_settings(CFG) # Persiste a mudança
+            end
             i += 1
         elseif arg == "--internet"
             CFG.internet = true
@@ -131,6 +134,8 @@ function parse_cli_args()
         
         if CFG.internet
             CFG.saldo = BtcUtils.get_balance(CFG.wallet_addr)
+            bal = tryparse(Float64, CFG.saldo)
+            CFG.wallet_status = (bal !== nothing && bal == 0.0) ? 1 : 0
         end
         
         r_min = hex2big(CFG.interval_min)
@@ -157,6 +162,11 @@ function parse_cli_args()
             scan_dashboard([CFG.wallet_addr], r_min, r_max, mode, start_k, end_k, puzzle_id=CFG.wallet_num)
         end
         return true
+    end
+    # Persiste o motor se foi passado via CLI
+    if engine != CFG.engine
+        CFG.engine = engine
+        ConfigModule.save_settings(CFG)
     end
     return false
 end
@@ -268,6 +278,21 @@ function escolher_carteira(ranges)
                 CFG.wallet_addr = get(r, "endereco", "")
                 CFG.interval_min = r["min"]
                 CFG.interval_max = r["max"]
+                if CFG.internet && !isempty(CFG.wallet_addr)
+                    print("  $(Y)Consultando saldo...$(X)")
+                    CFG.saldo = BtcUtils.get_balance(CFG.wallet_addr)
+                    bal = tryparse(Float64, CFG.saldo)
+                    println("\r  $(W)Saldo:$(X) $(G)$(CFG.saldo) BTC$(X)")
+                    new_status = (bal !== nothing && bal == 0.0) ? 1 : 0
+                    CFG.wallet_status = new_status
+                    if r["status"] != new_status
+                        r["status"] = new_status
+                        data = JSON.parsefile("data/ranges.json")
+                        data["ranges"][v]["status"] = new_status
+                        open("data/ranges.json", "w") do f; JSON.print(f, data, 2); end
+                    end
+                    sleep(0.5)
+                end
                 ConfigModule.save_settings(CFG)
                 return
             end
@@ -280,8 +305,8 @@ function escolher_motor()
     println("  $(W)Escolha o motor de busca padrão:$(X)\n")
     println("  $(G)[1]$(X)  Julia (SecpOpt)  $(DIM)- Estável, nativo$(X)")
     println("  $(Y)[2]$(X)  BitCrack        $(DIM)- Alta performance CPU$(X)")
+    println("  $(M)[3]$(X)  Kangaroo        $(DIM)- Pollard's Kangaroo (p/ chave pública)$(X)")
     
-    # Detecção unificada de GPU (CUDA ou Metal)
     gpu_ready = false
     try
         if Sys.isapple()
@@ -294,7 +319,7 @@ function escolher_motor()
     end
 
     if gpu_ready && CFG.gpu
-        println("  $(B)[3]$(X)  Keyhunter (GPU) $(DIM)- Aceleração Hardware$(X)")
+        println("  $(B)[4]$(X)  Keyhunter (GPU) $(DIM)- Aceleração Hardware$(X)")
     end
     println("  $(DIM)[0]  Voltar$(X)\n")
     
@@ -303,7 +328,9 @@ function escolher_motor()
         CFG.engine = :secp
     elseif m_op == "2"
         CFG.engine = :bitcrack
-    elseif m_op == "3" && gpu_ready
+    elseif m_op == "3"
+        CFG.engine = :bsgs
+    elseif m_op == "4" && gpu_ready
         CFG.engine = :gpu
         CFG.gpu = true 
     end
@@ -373,6 +400,47 @@ function escolher_checkpoint()
             println("\n  $(G)✓ Configuração salva!$(X)"); sleep(0.8)
         end
     end
+end
+
+function mostrar_ajuda()
+    header("AJUDA — Comandos CLI", compact=true)
+    println(box_line("$(DIM)Uso:$(X) $(W)julia --threads auto main.jl [OPÇÕES]$(X)"))
+    println(box_sep())
+
+    println(box_line("  $(BOLD)$(Y)── ALVO ──$(X)"))
+    println(box_line("  $(G)--puzzle <N>$(X)      $(DIM)Puzzle alvo (1–160)$(X)"))
+    println(box_line("  $(G)--internet$(X)         $(DIM)Força consulta de saldo$(X)"))
+    println(box_sep())
+
+    println(box_line("  $(BOLD)$(C)── MODO ──$(X)"))
+    println(box_line("  $(Y)--modo <N>$(X)         $(DIM)Modo: 1=Seq, 2=Rev, 3=Aleat$(X)"))
+    println(box_line("  $(B)--porcentagem <N>$(X)  $(DIM)Percentual inicial do range$(X)"))
+    println(box_line("  $(B)--fim <N>$(X)          $(DIM)Percentual final do range$(X)"))
+    println(box_line("  $(C)--hstart <hex>$(X)     $(DIM)Range inicial em hex$(X)"))
+    println(box_line("  $(C)--hend <hex>$(X)       $(DIM)Range final em hex$(X)"))
+    println(box_sep())
+
+    println(box_line("  $(BOLD)$(M)── MOTOR ──$(X)"))
+    println(box_line("  $(M)--motor <nome>$(X)    $(DIM)bitcrack, secp, gpu, bsgs$(X)"))
+    println(box_line("  $(R)--gpu:<N>$(X)         $(DIM)Ativa GPU com intensidade N$(X)"))
+    println(box_line("  $(C)--batch <N>$(X)       $(DIM)Tamanho do buffer$(X)"))
+    println(box_sep())
+
+    println(box_line("  $(BOLD)$(W)── SISTEMA ──$(X)"))
+    println(box_line("  $(W)--cpus <N>$(X)        $(DIM)Número de threads$(X)"))
+    println(box_line("  $(G)--checkpoint <N>$(X)  $(DIM)Intervalo em segs ou \"off\"$(X)"))
+    println(box_sep())
+
+    println(box_line("  $(BOLD)$(G)Exemplos:$(X)"))
+    println(box_line("  $(DIM)1.$(X) $(W)julia --threads auto main.jl \\$(X)"))
+    println(box_line("  $(W)    --puzzle 76 --motor bitcrack --gpu:8$(X)"))
+    println(box_line("  $(DIM)2.$(X) $(W)julia --threads auto main.jl \\$(X)"))
+    println(box_line("  $(W)    --puzzle 71 --modo 2 --porcentagem 30 --fim 35$(X)"))
+    println(box_line("  $(DIM)3.$(X) $(W)julia --threads auto main.jl \\$(X)"))
+    println(box_line("  $(W)    --puzzle 66 --hstart 0x2832ed --hend 0x2832ee$(X)"))
+    println(box_bot())
+    println("\n  $(DIM)Pressione ENTER para voltar...$(X)")
+    readline()
 end
 
 function reiniciar_com_threads()
@@ -446,6 +514,8 @@ function pre_scan_menu()
         print("  $(Y)Consultando saldo...$(X)")
         CFG.saldo = BtcUtils.get_balance(CFG.wallet_addr)
         println("\r  $(W)Saldo encontrado:$(X) $(G)$(CFG.saldo) BTC$(X)    ")
+        bal = tryparse(Float64, CFG.saldo)
+        CFG.wallet_status = (bal !== nothing && bal == 0.0) ? 1 : 0
         sleep(1)
     else
         CFG.saldo = ""
@@ -529,6 +599,7 @@ function main_menu()
         println("  $(Y)[2]$(X)  Escolher Puzzle")
         println("  $(B)[3]$(X)  Iniciar Busca")
         println("  $(C)[4]$(X)  Configurações")
+        println("  $(M)[5]$(X)  Ajuda / Comandos")
         println("  $(DIM)[0]  Sair$(X)")
         
         op = UIModule.input("\n  Opção: ")
@@ -540,6 +611,8 @@ function main_menu()
             pre_scan_menu()
         elseif op == "4"
             config_menu()
+        elseif op == "5"
+            mostrar_ajuda()
         elseif op == "0"
             show_cursor()
             exit(0)
@@ -562,8 +635,6 @@ function main()
         if Sys.isapple() && Metal.functional()
             dev = Metal.device()
             CFG.gpu_name = dev.name
-            # M4 tem memória unificada, o total costuma ser limitado pelo sistema
-            # mas vamos reportar como ativa
             CFG.gpu_mem = "Unified Memory (M4)"
             CFG.gpu = user_wants_gpu
         elseif CUDA.functional()
@@ -572,17 +643,30 @@ function main()
             vram_gb = CUDA.totalmem(dev) / (1024^3)
             CFG.gpu_mem = @sprintf("%.1f GB", vram_gb)
 
-            # Testa se a placa REALMENTE compila kernels de forma funcional
             if GpuScanner.check_compatibility()
-                # Compatível — restaura a preferência do usuário
                 CFG.gpu = user_wants_gpu
             else
-                # Incompatível — force desabilitado e marca no nome
                 CFG.gpu = false
                 CFG.gpu_name = "$(CFG.gpu_name) (Incompatível)"
             end
         end
     catch; end
+
+    # --- AUTO-RELAUNCH NITRO ---
+    # Se Julia iniciou com menos threads que o configurado no JSON, reinicia com o valor correto.
+    active_threads = Threads.nthreads()
+    if active_threads < CFG.cpus && !haskey(ENV, "BTC_RELAUNCHED")
+        julia_bin = joinpath(Sys.BINDIR, "julia")
+        if !isfile(julia_bin); julia_bin = "julia"; end
+        
+        # Define flag para evitar loop infinito
+        ENV["BTC_RELAUNCHED"] = "1"
+        
+        # Relança o processo com os threads corretos PRESERVANDO os argumentos
+        cmd = Cmd([julia_bin, "-t", string(CFG.cpus), "main.jl", ARGS...])
+        run(cmd)
+        exit(0)
+    end
 
     # Tenta processar argumentos de linha de comando primeiro
     parse_cli_args()
