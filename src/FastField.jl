@@ -17,7 +17,7 @@ struct FE256
     v4::UInt64 # High
 end
 
-const _P_V1 = 0xffffffffffffff2f
+const _P_V1 = 0xfffffffefffffc2f
 const _P_V2 = 0xffffffffffffffff
 const _P_V3 = 0xffffffffffffffff
 const _P_V4 = 0xffffffffffffffff
@@ -32,10 +32,10 @@ const K_VAL = UInt64(0x1000003d1)
 # p-2 for Fermat's Little Theorem inversion (secp256k1 prime)
 # p = 2^256 - 2^32 - 977 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 # p-2 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2D
-const _P_MINUS_2_V1 = UInt64(0xfffffc2d)
+const _P_MINUS_2_V1 = UInt64(0xfffffffefffffc2d)
 const _P_MINUS_2_V2 = UInt64(0xffffffffffffffff)
 const _P_MINUS_2_V3 = UInt64(0xffffffffffffffff)
-const _P_MINUS_2_V4 = UInt64(0xfffffffe)
+const _P_MINUS_2_V4 = UInt64(0xffffffffffffffff)
 
 # ── Conversões ────────────────────────────────────────────
 
@@ -182,6 +182,14 @@ end
     r2, cb2 = add_carry_native(r2, UInt64(0), UInt64(cb1))
     r3, cb3 = add_carry_native(r3, UInt64(0), UInt64(cb2))
     r4, cb4 = add_carry_native(r4, UInt64(0), UInt64(cb3))
+
+    # Fix the missing cb4: if cb4 == 1, we must add K_VAL since 2^256 = K_VAL mod P
+    if cb4 > 0
+        r1, cb1 = Base.add_with_overflow(r1, K_VAL)
+        r2, cb2 = add_carry_native(r2, UInt64(0), UInt64(cb1))
+        r3, cb3 = add_carry_native(r3, UInt64(0), UInt64(cb2))
+        r4, cb4 = add_carry_native(r4, UInt64(0), UInt64(cb3))
+    end
 
     # --- REDUÇÃO COMPLETA COM LOOP ---
     # Repetir redução enquanto resultado >= 2^256 (overflow em r4)

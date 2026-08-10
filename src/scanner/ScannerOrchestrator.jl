@@ -84,6 +84,11 @@ function scan_dashboard(
     rng_size   = rng_max - rng_min + 1
     mode_name  = mode == 1 ? "Sequencial →" : mode == 2 ? "← Reverso" : "⟳ Aleatório"
     batch_sz   = CFG.batch_size
+    
+    # Auto-ajuste de batch_size se muito baixo para CPU (Evita engasgos de threads)
+    if CFG.engine == :bitcrack && batch_sz < 4096
+        batch_sz = 8192
+    end
 
     keys_done    = Atomic{Int64}(0)
     found_key    = Ref{BigInt}(BigInt(-1))
@@ -272,8 +277,8 @@ function scan_dashboard(
             if CFG.engine == :bitcrack
                 # Motor BitCrackEngine (Multi-target nativo)
                 # No modo reverso (2), inicializamos com o passo negativo
-                stride_for_engine = mode == 2 ? -BigInt(batch_sz * n_threads) : BigInt(batch_sz * n_threads)
-                state = BitCrackEngine.init_engine(curr_base, target_set, batch_sz, Int(stride_for_engine), CFG.both_formats)
+                stride_for_engine = BigInt(batch_sz * n_threads)
+                state = BitCrackEngine.init_engine(curr_base, target_set, batch_sz, Int(stride_for_engine), CFG.both_formats, mode == 2)
                 
                 local_count = 0
                 batch_counter = 0
@@ -317,6 +322,7 @@ function scan_dashboard(
                     if mod(batch_counter, 64) == 0
                         atomic_add!(keys_done, local_count)
                         local_count = 0
+                        yield()
                     end
 
                     if mode == 1 || mode == 2
@@ -361,7 +367,6 @@ function scan_dashboard(
                             batch_counter = 0
                         end
                     end
-                    yield()
                 end
                 atomic_add!(keys_done, local_count)
             elseif CFG.engine == :gpu

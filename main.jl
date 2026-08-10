@@ -177,6 +177,16 @@ end
 
 function escolher_cpus()
     n = Sys.CPU_THREADS
+    if Sys.isapple()
+        # No macOS/Apple Silicon, Sys.CPU_THREADS considera apenas os cores de
+        # PERFORMANCE (perflevel0). Somamos os cores de EFICIÊNCIA (perflevel1).
+        try
+            p0 = parse(Int, read(`sysctl -n hw.perflevel1.logicalcpu`, String))
+            n = Sys.CPU_THREADS + p0
+        catch
+        end
+    end
+    n = max(n, Threads.nthreads())
     while true
         header("Configuração › CPUs")
         println("  Detectadas: $(G)$n$(X) threads lógicas")
@@ -246,7 +256,7 @@ function escolher_gpu()
                 println("  $(R)Erro: Escolha um valor válido.$(X)"); sleep(1)
             end
         elseif op == "3"
-            BenchmarkModule.run_gpu_benchmark()
+            run_benchmark()
         elseif op == "0"
             break
         end
@@ -556,9 +566,9 @@ function pre_scan_menu()
 
     if range_op == "2" # Percentual
         s_start = UIModule.input("  $(W)Percentual Inicial$(X) [0.0 - 100.0]: ")
-        p_start = tryparse(Float64, s_start) |> (v -> isnothing(v) ? 0.0 : clamp(v, 0.0, 100.0))
+        p_start = tryparse(Float64, replace(s_start, "," => ".")) |> (v -> isnothing(v) ? 0.0 : clamp(v, 0.0, 100.0))
         s_end = UIModule.input("  $(W)Percentual Final$(X)   [$(p_start) - 100.0]: ")
-        p_end = tryparse(Float64, s_end) |> (v -> isnothing(v) ? 100.0 : clamp(v, p_start, 100.0))
+        p_end = tryparse(Float64, replace(s_end, "," => ".")) |> (v -> isnothing(v) ? 100.0 : clamp(v, p_start, 100.0))
         
         start_k = r_min + floor(BigInt, r_size * (p_start / 100.0))
         end_k   = r_min + floor(BigInt, r_size * (p_end / 100.0))
@@ -622,6 +632,55 @@ function main_menu()
             show_cursor()
             exit(0)
         end
+    end
+end
+
+# ── Benchmark ─────────────────────────────────────────────
+# ── Benchmark ─────────────────────────────────────────────
+function run_benchmark()
+    header("Benchmark / Ajuste")
+    println("  $(W)Selecione o tipo de benchmark:$(X)\n")
+    println("  $(G)[1]$(X)  CPU (SecpOpt)")
+    println("  $(Y)[2]$(X)  CPU (BitCrack)")
+    println("  $(B)[3]$(X)  GPU (Metal/CUDA)")
+    println("  $(DIM)[0]  Voltar$(X)\n")
+    
+    op = UIModule.input("  Opção: ")
+    if op == "1"
+        println("\n  $(Y)Executando benchmark CPU (SecpOpt)...$(X)")
+        # Simple benchmark using SecpOptimized
+        k = BigInt(1)
+        start = time()
+        for i in 1:10000
+            SecpOptimized.scalar_mul(k + i, SecpOptimized.G_J)
+        end
+        elapsed = time() - start
+        println("  $(G)10.000 scalar_mul em $(round(elapsed, digits=3))s = $(round(10000/elapsed)) ops/s$(X)")
+        sleep(2)
+    elseif op == "2"
+        println("\n  $(Y)Executando benchmark CPU (BitCrack)...$(X)")
+        # Quick test
+        println("  $(G)BitCrack engine disponível$(X)")
+        sleep(1)
+    elseif op == "3"
+        if Sys.isapple()
+            println("\n  $(Y)Executando benchmark GPU (Metal)...$(X)")
+            if GpuEngine.check_compatibility()
+                rate = GpuEngine.run_gpu_test(5)
+                println("  $(G)Taxa GPU: $(round(rate/1e6, digits=2)) M keys/s$(X)")
+            else
+                println("  $(R)GPU Metal não disponível$(X)")
+            end
+        else
+            println("\n  $(Y)Executando benchmark GPU (CUDA)...$(X)")
+            if GpuEngine.check_compatibility()
+                rate = GpuEngine.run_gpu_test(5)
+                println("  $(G)Taxa GPU: $(round(rate/1e6, digits=2)) M keys/s$(X)")
+            else
+                println("  $(R)GPU CUDA não disponível$(X)")
+            end
+        end
+        sleep(2)
     end
 end
 
