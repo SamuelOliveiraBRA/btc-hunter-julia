@@ -7,7 +7,7 @@ module FastField
 # Alvo: 4M+ chaves/segundo através de Redução Pseudo-Mersenne.
 # ═══════════════════════════════════════════════════════════════════
 
-export FE256, mul_mod, add_mod, sub_mod, sqr_mod, inv_mod, from_big, to_big, ONE, ZERO
+export FE256, mul_mod, add_mod, sub_mod, sqr_mod, inv_mod, pow_mod, from_big, to_big, ONE, ZERO
 export write_32bytes!
 
 struct FE256
@@ -28,6 +28,14 @@ const ONE  = FE256(1, 0, 0, 0)
 
 # K = 2^256 mod P = 2^32 + 977
 const K_VAL = UInt64(0x1000003d1)
+
+# p-2 for Fermat's Little Theorem inversion (secp256k1 prime)
+# p = 2^256 - 2^32 - 977 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+# p-2 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2D
+const _P_MINUS_2_V1 = UInt64(0xfffffc2d)
+const _P_MINUS_2_V2 = UInt64(0xffffffffffffffff)
+const _P_MINUS_2_V3 = UInt64(0xffffffffffffffff)
+const _P_MINUS_2_V4 = UInt64(0xfffffffe)
 
 # ── Conversões ────────────────────────────────────────────
 
@@ -152,31 +160,50 @@ end
     r8 = c
 
     # Fase 2: Redução Pseudo-Mersenne Secp256k1 (K = 2^32 + 977)
+    # p = 2^256 - K, logo x mod p = (x & (2^256-1)) + (x >> 256) * K
+    # Repetir até resultado < 2^256, depois subtração condicional final
     K = 0x00000001000003d1
     
+    # Primeira passagem: r1..r4 + (r5..r8) * K
     h1, c_red = mac_with_carry(r5, K, UInt64(0), UInt64(0))
     h2, c_red = mac_with_carry(r6, K, UInt64(0), c_red)
     h3, c_red = mac_with_carry(r7, K, UInt64(0), c_red)
     h4, c_red = mac_with_carry(r8, K, UInt64(0), c_red)
     h5 = c_red
 
-    # Adicionar r1..r4 + h1..h4
     r1, cb = Base.add_with_overflow(r1, h1)
     r2, cb = add_carry_native(r2, h2, UInt64(cb))
     r3, cb = add_carry_native(r3, h3, cb)
     r4, cb = add_carry_native(r4, h4, cb)
-    
-    # --- REDUÇÃO BRANCHLESS (Pico de Performance M4) ---
+
     ov = h5 + UInt64(cb)
     rem_final = ov * K
     r1, cb1 = Base.add_with_overflow(r1, rem_final)
     r2, cb2 = add_carry_native(r2, UInt64(0), UInt64(cb1))
     r3, cb3 = add_carry_native(r3, UInt64(0), UInt64(cb2))
     r4, cb4 = add_carry_native(r4, UInt64(0), UInt64(cb3))
-    
-    # O resultado agora é garantidamente muito próximo de P ou < P.
-    # Como as chaves privadas são pequenas em relação ao campo, 
-    # a integridade probabilística é mantida para a busca.
+
+    # --- REDUÇÃO COMPLETA COM LOOP ---
+    # Repetir redução enquanto resultado >= 2^256 (overflow em r4)
+    # ou enquanto resultado >= p
+    for _ in 1:3  # Máximo 3 iterações suficientes para 512->256 bits
+        # Verificar se r4 overflowed (r >= 2^256) ou r >= p
+        t1, tc = Base.add_with_overflow(r1, K_VAL)
+        t2, tc = add_carry_native(r2, UInt64(0), UInt64(tc))
+        t3, tc = add_carry_native(r3, UInt64(0), tc)
+        t4, tc = add_carry_native(r4, UInt64(0), tc)
+        
+        mask = -UInt64(tc)
+        
+        # Se overflow (r >= p), usar r + K (equivale a r - p)
+        r1 = (t1 & mask) | (r1 & ~mask)
+        r2 = (t2 & mask) | (r2 & ~mask)
+        r3 = (t3 & mask) | (r3 & ~mask)
+        r4 = (t4 & mask) | (r4 & ~mask)
+        
+        # Se não houve overflow, pode parar
+        tc == 0 && break
+    end
 
     return FE256(r1, r2, r3, r4)
 end
@@ -186,10 +213,69 @@ end
     return mul_mod(a, a)
 end
 
+@inline function pow_mod(a::FE256)::FE256
+    # a^(p-2) mod p using Fermat's Little Theorem
+    # p-2 = FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2D
+    res = ONE
+    base = a
+    
+    # v1 = 0xfffffc2d (64 bits)
+    for i in 0:63
+        if ((_P_MINUS_2_V1 >> i) & 1) == 1
+            res = mul_mod(res, base)
+        end
+        base = sqr_mod(base)
+    end
+    # v2 = 0xffffffffffffffff (64 bits)
+    for i in 0:63
+        if ((_P_MINUS_2_V2 >> i) & 1) == 1
+            res = mul_mod(res, base)
+        end
+        base = sqr_mod(base)
+    end
+    # v3 = 0xffffffffffffffff (64 bits)
+    for i in 0:63
+        if ((_P_MINUS_2_V3 >> i) & 1) == 1
+            res = mul_mod(res, base)
+        end
+        base = sqr_mod(base)
+    end
+    # v4 = 0xfffffffe (64 bits)
+    for i in 0:63
+        if ((_P_MINUS_2_V4 >> i) & 1) == 1
+            res = mul_mod(res, base)
+        end
+        base = sqr_mod(base)
+    end
+    
+    return res
+end
+
 @inline function inv_mod(a::FE256)::FE256
     a == ZERO && return ZERO
-    return from_big(invmod(to_big(a), _P_BIG))
+    return pow_mod(a)
 end
+
+@inline function isodd(a::FE256)::Bool
+    return (a.v1 & 1) == 1
+end
+
+@inline function ge(a::FE256, b::FE256)::Bool
+    if a.v4 != b.v4 return a.v4 > b.v4 end
+    if a.v3 != b.v3 return a.v3 > b.v3 end
+    if a.v2 != b.v2 return a.v2 > b.v2 end
+    return a.v1 >= b.v1
+end
+
+@inline function lt(a::FE256, b::FE256)::Bool
+    if a.v4 != b.v4 return a.v4 < b.v4 end
+    if a.v3 != b.v3 return a.v3 < b.v3 end
+    if a.v2 != b.v2 return a.v2 < b.v2 end
+    return a.v1 < b.v1
+end
+
+# Base.isless for FE256
+Base.isless(a::FE256, b::FE256) = lt(a, b)
 
 # ── Helpers de Bits ────────────────────────────────────────
 

@@ -111,10 +111,16 @@ export ripemd160_32b!
     t = h1 + cl + dr; h1 = h2 + dl + er; h2 = h3 + el + ar
     h3 = h4 + al + br; h4 = h0 + bl + cr; h0 = t
 
-    p_out32 = convert(Ptr{UInt32}, out_p)
-    unsafe_store!(p_out32, h0, 1); unsafe_store!(p_out32, h1, 2)
-    unsafe_store!(p_out32, h2, 3); unsafe_store!(p_out32, h3, 4)
-    unsafe_store!(p_out32, h4, 5)
+    # Output as big-endian bytes (Bitcoin standard)
+    p_out = convert(Ptr{UInt8}, out_p)
+    @inbounds for (i, word) in enumerate((h0, h1, h2, h3, h4))
+        w = bswap(word)
+        base = (i - 1) * 4
+        unsafe_store!(p_out, w & 0xff, base + 1)
+        unsafe_store!(p_out, (w >> 8) & 0xff, base + 2)
+        unsafe_store!(p_out, (w >> 16) & 0xff, base + 3)
+        unsafe_store!(p_out, (w >> 24) & 0xff, base + 4)
+    end
 end
 
 end

@@ -280,8 +280,25 @@ function scan_dashboard(
                 local_batch_idx = 0
                 random_batches_in_chunk = 0 # Contador para saltos aleatórios
                 RAND_JUMP_LIMIT = 256       # Quantos lotes processar antes de pular (aprox 4M chaves)
-
+                
+                # Calcular tamanho efetivo do lote baseado no range restante
+                effective_batch_sz = batch_sz
+                
                 while !stop[]
+                    # Verificar range ANTES de processar o lote (correção para ranges pequenos)
+                    if mode == 1 || mode == 2
+                        current_pos = curr_base + BigInt(local_batch_idx * (batch_sz * n_threads))
+                        remaining = mode == 1 ? (end_key - current_pos + 1) : (current_pos - end_key + 1)
+                        if remaining <= 0
+                            break
+                        end
+                        # Ajustar batch_sz efetivo para não ultrapassar o range
+                        max_keys_this_batch = min(batch_sz, max(1, Int(min(remaining ÷ n_threads, BigInt(batch_sz)))))
+                        effective_batch_sz = max_keys_this_batch
+                    else
+                        effective_batch_sz = batch_sz
+                    end
+                    
                     res = BitCrackEngine.check_batch(state)
                     idx, h_f = res[1], res[2]
                     
@@ -293,7 +310,7 @@ function scan_dashboard(
                         stop[] = true; break
                     end
                     
-                    local_count += batch_sz
+                    local_count += effective_batch_sz
                     batch_counter += 1
                     
                     # Sincroniza progresso a cada 64 lotes para todos os modos (Equilíbrio UI vs Performance)
@@ -303,7 +320,7 @@ function scan_dashboard(
                     end
 
                     if mode == 1 || mode == 2
-                        current_pos = curr_base + BigInt(local_batch_idx * (batch_sz * n_threads))
+                        current_pos = curr_base + BigInt(local_batch_idx * (effective_batch_sz * n_threads))
                         if mode == 1 && current_pos > end_key; break; end
                         if mode == 2 && current_pos < end_key; break; end
                         

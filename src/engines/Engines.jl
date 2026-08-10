@@ -22,6 +22,7 @@ using ..BtcUtils
 using ..SecpOptimized
 using ..GpuCrypto
 using ..BtcCrypto_M4
+using ..FastRipemd
 
 # 3. Carregar Motores Específicos
 if IS_MAC

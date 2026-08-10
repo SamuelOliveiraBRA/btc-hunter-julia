@@ -24,3 +24,5 @@ data/checkpoint.json
 *.log
 test_output.txt
 verify_*.jl
+chave_ssh
+chave_ssh.pub

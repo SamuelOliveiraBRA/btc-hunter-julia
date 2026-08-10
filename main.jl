@@ -7,10 +7,11 @@
 include("src/Config.jl")
 using .ConfigModule
 
+# Carregar Metal/CUDA ANTES do main() para garantir disponibilidade global
 if Sys.isapple()
-    try using Metal catch end
+    @eval using Metal
 else
-    try using CUDA catch end
+    @eval using CUDA
 end
 
 include("src/Base58.jl")
@@ -31,9 +32,10 @@ using .MultiTarget
 include("src/SecpOptimized.jl") # Mantido temporariamente para dependências legadas
 include("src/FastField.jl")
 include("src/FastSecp.jl")
+include("src/FastRipemd.jl")
 include("src/GpuCrypto.jl")
 
-using .FastField, .FastSecp
+using .FastField, .FastSecp, .FastRipemd
 
 include("src/UI.jl")
 using .UIModule
@@ -218,7 +220,7 @@ function escolher_gpu()
         println("  Estado Atual: $status")
         println("  Intensidade: $(C)$(CFG.gpu_intensity)$(X) (Threads/Bloco)\n")
         
-        is_gpu_ready = !contains(CFG.gpu_name, "Incompatível")
+        gpu_ready = CFG.gpu && !contains(CFG.gpu_name, "Incompatível")
         println("  $(G)[1]$(X)  Ativar/Desativar GPU")
         println("  $(Y)[2]$(X)  Configurar Intensidade")
         println("  $(B)[3]$(X)  Testar Performance (Benchmark)")
@@ -226,7 +228,7 @@ function escolher_gpu()
         
         op = UIModule.input("  Escolha: ")
         if op == "1"
-            if is_gpu_ready
+            if gpu_ready
                 CFG.gpu = !CFG.gpu
                 if CFG.gpu; CFG.engine = :gpu; end # Auto-seleciona motor se ligar
                 ConfigModule.save_settings(CFG)
@@ -310,16 +312,19 @@ function escolher_motor()
     gpu_ready = false
     try
         if Sys.isapple()
-            gpu_ready = Main.Metal.functional()
+            gpu_ready = Metal.functional()
         else
-            gpu_ready = Main.CUDA.functional() && !contains(CFG.gpu_name, "Incompatível")
+            gpu_ready = CUDA.functional() && !contains(CFG.gpu_name, "Incompatível")
         end
     catch
         gpu_ready = false
     end
 
-    if gpu_ready && CFG.gpu
+    if gpu_ready
         println("  $(B)[4]$(X)  Keyhunter (GPU) $(DIM)- Aceleração Hardware$(X)")
+        println("      $(DIM)Status: $(CFG.gpu ? "$(G)Ativa$(X)" : "$(R)Desativada$(X)")$(X)")
+    else
+        println("  $(DIM)[4]  Keyhunter (GPU) - Hardware não disponível$(X)")
     end
     println("  $(DIM)[0]  Voltar$(X)\n")
     
@@ -632,11 +637,17 @@ function main()
 
     # Detecção automática de GPU
     try
-        if Sys.isapple() && Metal.functional()
-            dev = Metal.device()
-            CFG.gpu_name = dev.name
-            CFG.gpu_mem = "Unified Memory (M4)"
-            CFG.gpu = user_wants_gpu
+        if Sys.isapple()
+            @info "Detectando Metal..."
+            if Metal.functional()
+                dev = Metal.device()
+                CFG.gpu_name = String(dev.name)
+                CFG.gpu_mem = "Unified Memory (M4)"
+                CFG.gpu = user_wants_gpu
+                @info "Metal detectado: $(dev.name)"
+            else
+                @warn "Metal não funcional"
+            end
         elseif CUDA.functional()
             dev = CUDA.device()
             CFG.gpu_name = CUDA.name(dev)
@@ -650,7 +661,9 @@ function main()
                 CFG.gpu_name = "$(CFG.gpu_name) (Incompatível)"
             end
         end
-    catch; end
+    catch e
+        @warn "Erro na detecção de GPU: $e"
+    end
 
     # --- AUTO-RELAUNCH NITRO ---
     # Se Julia iniciou com menos threads que o configurado no JSON, reinicia com o valor correto.

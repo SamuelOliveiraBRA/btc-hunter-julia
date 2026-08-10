@@ -7,13 +7,15 @@ module BitCrackEngine
 # 1. Julia nativo (Jacobianas) -> 14k/s
 # 2. BigInt otimizado + Zero-GC -> 140k/s
 # 3. Batch Affine Addition -> ALTO DESEMPENHO (Alvo: +300k/s)
+# 4. RIPEMD-160 Nativo + inv_mod Zero-GC (Alvo: 40-80M chaves/s)
 # ═══════════════════════════════════════════════════════════════════
 
 using ..FastField
 using ..FastSecp
 using ..SecpOptimized
-using ..BtcCrypto_M4
+using ..BtcCrypto
 using ..MultiTarget
+using ..FastRipemd
 
 export BitCrackState, init_engine, next_batch!, check_batch
 
@@ -70,13 +72,16 @@ function init_engine(start_key::BigInt, targets::TargetSet, batch_size::Int, str
     prod_buf = Vector{FE256}(undef, batch_size)
     inv_dx_buf = Vector{FE256}(undef, batch_size)
     sha_buf = Vector{UInt8}(undef, 128) # 4 resultados de 32 bytes
-    h160_buf = Vector{UInt8}(undef, 20)
+    h160_buf = Vector{UInt8}(undef, 80)  # 4 hashes de 20 bytes para loop unrolled 4x
     padded_buf = zeros(UInt8, 256) # 4 blocos de 64 bytes
     for b in 0:3
         off = b * 64
+        # SHA256 padding para 33 bytes (1 prefixo + 32 X):
+        # byte 34 = 0x80, bytes 35-56 = zeros (22 bytes), 
+        # bytes 57-64 = length 264 bits = 0x0000000000000108 (big-endian)
         padded_buf[off + 34] = 0x80
-        padded_buf[off + 64] = 0x08
         padded_buf[off + 63] = 0x01
+        padded_buf[off + 64] = 0x08
     end
 
     # Buffers temporários
@@ -230,29 +235,52 @@ function check_batch(state::BitCrackState)
             unsafe_store!(p_pad + 64, iseven(pt2.y.v1) ? 0x02 : 0x03)
             FastField.write_32bytes!(state.padded_buf, 65, pt2.x)
             
-            # Hashing Hardware Batch 1
-            BtcCrypto_M4.sha256_block_m4!(p_sha, p_pad)
-            BtcCrypto_M4.sha256_block_m4!(p_sha + 32, p_pad + 64)
+            # Hashing com SHA256 puro Julia (correto) - usar mensagem bruta de 33 bytes
+            msg1 = Vector{UInt8}(undef, 33)
+            msg1[1] = iseven(pt1.y.v1) ? 0x02 : 0x03
+            FastField.write_32bytes!(msg1, 1, pt1.x)
+            sha_out1 = BtcCrypto.sha256(msg1)
+            unsafe_copyto!(p_sha, pointer(sha_out1), 32)
+            
+            msg2 = Vector{UInt8}(undef, 33)
+            msg2[1] = iseven(pt2.y.v1) ? 0x02 : 0x03
+            FastField.write_32bytes!(msg2, 1, pt2.x)
+            sha_out2 = BtcCrypto.sha256(msg2)
+            unsafe_copyto!(p_sha + 32, pointer(sha_out2), 32)
 
-            unsafe_store!(p_pad + 128, iseven(pt3.y.v1) ? 0x02 : 0x03)
+unsafe_store!(p_pad + 128, iseven(pt3.y.v1) ? 0x02 : 0x03)
             FastField.write_32bytes!(state.padded_buf, 129, pt3.x)
-
+            
             unsafe_store!(p_pad + 192, iseven(pt4.y.v1) ? 0x02 : 0x03)
             FastField.write_32bytes!(state.padded_buf, 193, pt4.x)
+            
+            # Hashing Batch 2
+            msg3 = Vector{UInt8}(undef, 33)
+            msg3[1] = iseven(pt3.y.v1) ? 0x02 : 0x03
+            FastField.write_32bytes!(msg3, 1, pt3.x)
+            sha_out3 = BtcCrypto.sha256(msg3)
+            unsafe_copyto!(p_sha + 64, pointer(sha_out3), 32)
+            
+            msg4 = Vector{UInt8}(undef, 33)
+            msg4[1] = iseven(pt4.y.v1) ? 0x02 : 0x03
+            FastField.write_32bytes!(msg4, 1, pt4.x)
+            sha_out4 = BtcCrypto.sha256(msg4)
+            unsafe_copyto!(p_sha + 96, pointer(sha_out4), 32)
 
-            # Hashing Hardware Batch 2
-            BtcCrypto_M4.sha256_block_m4!(p_sha + 64, p_pad + 128)
-            BtcCrypto_M4.sha256_block_m4!(p_sha + 96, p_pad + 192)
-
-            # Verificação em Série
+            # Verificação em Série - RIPEMD-160 (Pure Julia)
             for k in 0:3
                 pk_sha = p_sha + (k*32)
-                ccall((:RIPEMD160, "libcrypto"), Ptr{Cvoid}, 
-                      (Ptr{UInt8}, Csize_t, Ptr{UInt8}), pk_sha, 32, p_h160)
+                ph160_k = p_h160 + (k*20)
+                # Usar ripemd160 puro Julia
+                sha_vec = unsafe_wrap(Vector{UInt8}, pk_sha, 32, own=false)
+                rip_out = BtcCrypto.ripemd160(sha_vec)
+                unsafe_copyto!(ph160_k, pointer(rip_out), 20)
                 
-                if lut[((Int(unsafe_load(p_h160, 1)) << 8) | Int(unsafe_load(p_h160, 2))) + 1]
-                    if MultiTarget.check_hit(state.targets, state.h160_buf)
-                        return (i + k, copy(state.h160_buf))
+                if lut[((Int(unsafe_load(ph160_k, 1)) << 8) | Int(unsafe_load(ph160_k, 2))) + 1]
+                    # Criar Vector próprio para lookup no HashSet (evita problemas de hash no view)
+                    h160_slice = Vector{UInt8}(unsafe_wrap(Vector{UInt8}, ph160_k, 20, own=false))
+                    if h160_slice in state.targets.hashes
+                        return (i + k, copy(h160_slice))
                     end
                 end
             end
@@ -264,12 +292,15 @@ function check_batch(state::BitCrackState)
     while i <= n
         @inbounds begin
             pt = points[i]
-            unsafe_store!(p_pad, iseven(pt.y.v1) ? 0x02 : 0x03)
-            FastField.write_32bytes!(state.padded_buf, 1, pt.x)
             
-            BtcCrypto_M4.sha256_block_m4!(p_sha, p_pad)
-            ccall((:RIPEMD160, "libcrypto"), Ptr{Cvoid}, 
-                  (Ptr{UInt8}, Csize_t, Ptr{UInt8}), p_sha, 32, p_h160)
+            # SHA256 puro Julia com mensagem bruta de 33 bytes
+            msg = Vector{UInt8}(undef, 33)
+            msg[1] = iseven(pt.y.v1) ? 0x02 : 0x03
+            FastField.write_32bytes!(msg, 1, pt.x)
+            sha_out = BtcCrypto.sha256(msg)
+            unsafe_copyto!(p_sha, pointer(sha_out), 32)
+            
+            FastRipemd.ripemd160_32b!(p_sha, p_h160)
             
             if lut[((Int(unsafe_load(p_h160, 1)) << 8) | Int(unsafe_load(p_h160, 2))) + 1]
                 if MultiTarget.check_hit(state.targets, state.h160_buf)
@@ -284,8 +315,9 @@ function check_batch(state::BitCrackState)
                 
                 ccall((:CC_SHA256, "/usr/lib/system/libcommonCrypto.dylib"), Ptr{Cvoid}, 
                       (Ptr{UInt8}, UInt32, Ptr{UInt8}), p_pub, 65, p_sha)
-                ccall((:RIPEMD160, "libcrypto"), Ptr{Cvoid}, 
-                      (Ptr{UInt8}, Csize_t, Ptr{UInt8}), p_sha, 32, p_h160)
+                # RIPEMD-160 puro Julia para formato não comprimido
+                rip_out_uncomp = BtcCrypto.ripemd160(unsafe_wrap(Vector{UInt8}, p_sha, 32, own=false))
+                unsafe_copyto!(p_h160, pointer(rip_out_uncomp), 20)
                 
                 if lut[((Int(unsafe_load(p_h160, 1)) << 8) | Int(unsafe_load(p_h160, 2))) + 1]
                     if MultiTarget.check_hit(state.targets, state.h160_buf)
