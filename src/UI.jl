@@ -118,7 +118,7 @@ function header(subtitle=""; compact=false)
     fmt_s   = CFG.both_formats ? C*"C+U"*X : G*"Comprimido"*X
     b_size = CFG.engine == :gpu ? (CFG.gpu_intensity * 1024) : CFG.batch_size
 
-    println(box_top("$(BOLD)$(W) BTC HUNTER JULIA v1.5 $(X)"))
+    println(box_top("$(BOLD)$(W) BTC HUNTER JULIA v1.5.1 $(X)"))
 
     if !compact
         eng_s   = ""
