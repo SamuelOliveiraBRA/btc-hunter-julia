@@ -1,4 +1,4 @@
-# 🚀 BTC Hunter Julia - O Manual Mestre v1.5.0
+# 🚀 BTC Hunter Julia - O Manual Mestre v1.5.1
 
 [![Julia](https://img.shields.io/badge/Julia-1.10%2B-9558B2?logo=julia&logoColor=white)](https://julialang.org)
 [![Performance](https://img.shields.io/badge/Performance-Montgomery--Acelerado-orange)](#-motores-de-busca)
@@ -9,7 +9,7 @@ Este é o manual definitivo para o **BTC Hunter Julia**, um ecossistema de busca
 ---
 
 ## 📋 Sumário
-1.  [🌟 Novidades da Versão 1.5.0](#-novidades-da-versão-150)
+1.  [🌟 Novidades da Versão 1.5.1](#-novidades-da-versão-151)
 2.  [🧩 O que são os Bitcoin Puzzles?](#-o-que-são-os-bitcoin-puzzles)
 3.  [📦 Guia de Instalação (Windows, Mac, Linux)](#-guia-de-instalação-windows-mac-linux)
 4.  [🧠 A Anatomia do Comando (Explicação Linha por Linha)](#-a-anatomia-do-comando-explicação-linha-por-linha)
@@ -22,9 +22,9 @@ Este é o manual definitivo para o **BTC Hunter Julia**, um ecossistema de busca
 
 ---
 
-## 🌟 Novidades da Versão 1.5.0
+## 🌟 Novidades da Versão 1.5.1
 
-A versão 1.5.0 transforma o BTC Hunter em um sistema de nível **NOC (Network Operations Center)**, focado em transparência total e UX refinada.
+A versão 1.5.1 transforma o BTC Hunter em um sistema de nível **NOC (Network Operations Center)**, focado em transparência total e UX refinada.
 
 ### 💎 Dashboard Dinâmico
 *   **Interface Single-Page**: O terminal agora recarrega de forma limpa a cada navegação, eliminando poluição visual.
