@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════
-#  BTC HUNTER JULIA  ·  Julia Edition  ·  v1.5.1
+#  BTC HUNTER JULIA  ·  Julia Edition  ·  v1.5.2
 #  Arquitetura Modular & Performance Otimizada
 # ═══════════════════════════════════════════════════════════
 

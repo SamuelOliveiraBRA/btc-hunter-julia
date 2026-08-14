@@ -1,4 +1,4 @@
-# 🚀 BTC Hunter Julia - O Manual Mestre v1.5.1
+# 🚀 BTC Hunter Julia - O Manual Mestre v1.5.2
 
 [![Julia](https://img.shields.io/badge/Julia-1.10%2B-9558B2?logo=julia&logoColor=white)](https://julialang.org)
 [![Performance](https://img.shields.io/badge/Performance-Montgomery--Acelerado-orange)](#-motores-de-busca)
@@ -9,7 +9,7 @@ Este é o manual definitivo para o **BTC Hunter Julia**, um ecossistema de busca
 ---
 
 ## 📋 Sumário
-1.  [🌟 Novidades da Versão 1.5.1](#-novidades-da-versão-151)
+1.  [🌟 Novidades da Versão 1.5.2](#-novidades-da-versão-152)
 2.  [🧩 O que são os Bitcoin Puzzles?](#-o-que-são-os-bitcoin-puzzles)
 3.  [📦 Guia de Instalação (Windows, Mac, Linux)](#-guia-de-instalação-windows-mac-linux)
 4.  [🧠 A Anatomia do Comando (Explicação Linha por Linha)](#-a-anatomia-do-comando-explicação-linha-por-linha)
@@ -19,6 +19,33 @@ Este é o manual definitivo para o **BTC Hunter Julia**, um ecossistema de busca
 8.  [🛡️ Segurança e Checkpoints](#️-segurança-e-checkpoints)
 9.  [🏎️ Otimizações Técnicas Avançadas](#️-otimizações-técnicas-avançadas)
 10. [🆘 Solução de Problemas](#-solução-de-problemas)
+
+---
+
+## 🌟 Novidades da Versão 1.5.2
+
+A versão 1.5.2 corrige um **defeito crítico de aritmética de campo** que podia fazer a busca perder a chave silenciosamente em ranges longos, e refina ainda mais o dashboard e a navegação.
+
+### 🐛 Correção Crítica: Overflow no `mul_mod`
+*   **O Bug**: Um overflow raro (≈ 1 em 4 milhões de multiplicações) no caminho de redução do Pseudo-Mersenne fazia `ov * K` estourar os 64 bits e perder o carry alto. Isso corrompia a **inversão em lote (Montgomery)**, tirando todos os pontos do lote da curva elíptica sem nenhum erro visível.
+*   **O Efeito**: Buscas em ranges ≥ 2²⁹ (Puzzles #30+) podiam varrer o intervalo inteiro e **não encontrar a chave**, mesmo ela estando lá — exatamente o que acontecia a partir da wave ~4726 (Puzzle #30 tinha a chave na wave 5048).
+*   **A Correção**: `ov * K` agora é calculado em `UInt128`, com o carry alto propagado corretamente para o segundo limb (`r2`).
+*   **Validação**: Testado com 4 milhões de multiplicações no caminho raro de overflow (0 erros), teste de drift até a wave 5048 (0 desvio) e verificação real das chaves #30 a #35 encontradas pelo motor.
+
+### 🧮 Correção de Dados
+*   **Puzzle #6**: Endereço corrigido no `ranges.json` (`1PitScNLyp2HCygzadCh7FveTnfmpPbfp8`). Antes apontava para a carteira do Puzzle #7.
+*   **`wallets.json` removido**: O arquivo era redundante — o endereço de cada puzzle já está no `ranges.json`, e nenhum código o lia.
+
+### 🖥️ Dashboard e Navegação
+*   **Qtd Possíveis**: Novo campo exibindo a quantidade exata de chaves no intervalo.
+*   **Intervalo Mín/Máx**: Exibição clara dos limites hexadecimais do intervalo em busca.
+*   **Position Map**: Barra de progresso visual para o modo aleatório.
+*   **Sessão Interrompida**: `Ctrl+C` agora pausa a busca com **checkpoint salvo** (retomável depois) em vez de matar o processo.
+*   **Sem Auto-Relançamento**: O programa não reinicia mais o processo sozinho; apenas avisa para rodar com `julia -t <N> --project=. main.jl`.
+
+### ⚡ Experiência de Início
+*   Mensagem verde **"Carregando o sistema..."** durante o boot.
+*   `Ctrl+C` no menu volta ao menu principal em vez de fechar o programa.
 
 ---
 

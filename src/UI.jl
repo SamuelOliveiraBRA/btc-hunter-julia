@@ -131,7 +131,7 @@ function header(subtitle=""; compact=false)
     fmt_s   = CFG.both_formats ? C*"C+U"*X : G*"Comprimido"*X
     b_size = CFG.engine == :gpu ? (CFG.gpu_intensity * 1024) : CFG.batch_size
 
-    println(box_top("$(BOLD)$(W) BTC HUNTER JULIA v1.5.1 $(X)"))
+    println(box_top("$(BOLD)$(W) BTC HUNTER JULIA v1.5.2 $(X)"))
 
     if !compact
         eng_s   = ""
@@ -142,7 +142,7 @@ function header(subtitle=""; compact=false)
         else; eng_s = G*"SecpOpt"*X
         end
         hw = get_hw_info()
-        println(box_split("$(Y)v1.5.1$(X)  Julia Edition", "$(B)Dev. Samuel Oliveira$(X)"))
+        println(box_split("$(Y)v1.5.2$(X)  Julia Edition", "$(B)Dev. Samuel Oliveira$(X)"))
         println(box_sep())
         println(box_split("$(DIM)SISTEMA:$(X) $(W)$(hw.os) @ $(hw.speed)$(X)", "$(DIM)RAM:$(X) $(W)$(hw.ram)$(X)"))
         println(box_sep())
