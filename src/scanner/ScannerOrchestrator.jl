@@ -3,6 +3,7 @@ module ScannerOrchestrator
 using ..ConfigModule
 using ..UIModule: G, R, B, Y, M, C, W, DIM, X, BOLD, UL, 
                  clear, goto, hide_cursor, show_cursor, input, fmt_num, fmt_time, progress_bar,
+                 range_map, position_map,
                  box_line, box_top, box_sep, box_bot, box_split, header, print_found_key
 using ..BtcCrypto
 using ..CheckpointManager
@@ -155,6 +156,16 @@ function scan_dashboard(
                 "$(W)Tempo$(X)   $(Y)$(fmt_time(floor(BigInt, elapsed)))$(X)"
             ))
             print("\r\033[K"); println(box_split(
+                "$(W)Intervalo$(X) $(DIM)Mínimo$(X)",
+                "$(W)Intervalo$(X) $(DIM)Máximo$(X)"
+            ))
+            print("\r\033[K"); println(box_split(
+                "$(DIM)0x$(string(start_key, base=16))$(X)",
+                "$(DIM)0x$(string(end_key, base=16))$(X)"
+            ))
+            interval_keys = abs(end_key - start_key) + 1
+            print("\r\033[K"); println(box_line("$(W)Qtd Possíveis$(X)  $(C)$(fmt_num(interval_keys))$(X)"))
+            print("\r\033[K"); println(box_split(
                 "$(W)Testadas$(X)  $(G)$(fmt_num(cur))$(X)",
                 "$(W)Veloc.$(X)   $(G)$(fmt_num(speed))$(X)/s  $(C)$sp$(X)"
             ))
@@ -166,7 +177,11 @@ function scan_dashboard(
                 print("\r\033[K"); println(box_line("$(DIM)ETA: $(eta_str)$(X)"))
             else
                 print("\r\033[K"); println(box_line("$(DIM)Modo aleatório — progresso não linear$(X)"))
-                print("\r\033[K"); println(box_line("$(DIM)$(fmt_num(cur)) chaves testadas$(X)"))
+                interval_size = max(BigInt(1), end_key - start_key + 1)
+                pos = clamp(Float64(last_key[] - start_key) / Float64(interval_size), 0.0, 1.0)
+                print("\r\033[K"); println(box_line(
+                    "  " * position_map(pos) * @sprintf("  %.2f%%", pos*100)
+                ))
             end
         end
 
@@ -191,8 +206,8 @@ function scan_dashboard(
             speed = Δt > 0 ? Δ / Δt : 0.0
             total_elapsed = base_elapsed + (now_t - session_start)
 
-            # Sobe 8 linhas para re-renderizar sem flicker (8 stats)
-            print("\033[8A")
+            # Sobe as linhas do bloco de stats para re-renderizar sem flicker
+            print("\033[11A")
             render_stats(speed, total_elapsed)
 
             if CFG.use_checkpoint && puzzle_id > 0 && mode != 3
@@ -458,9 +473,22 @@ function scan_dashboard(
         end
     end
 
-    foreach(wait, worker_tasks)
+    interrupted = Ref(false)
+    try
+        foreach(wait, worker_tasks)
+    catch e
+        e isa InterruptException || rethrow()
+        interrupted[] = true
+        stop[] = true
+        try; foreach(wait, worker_tasks); catch; end
+    end
     stop[] = true
-    wait(progress_task)
+    try
+        wait(progress_task)
+    catch e
+        e isa InterruptException || rethrow()
+        interrupted[] = true
+    end
 
     # ── Finalização ───────────────────────────────────────
     total_elapsed = base_elapsed + (time() - session_start)
@@ -468,7 +496,7 @@ function scan_dashboard(
     speed  = total_elapsed > 0 ? final / total_elapsed : 0.0
 
     if found_key[] >= 0
-        print("\033[8A\r\033[J") 
+        print("\033[11A\r\033[J") 
         render_stats(speed, total_elapsed, true)
         pk     = found_key[]
         pk_hex = lpad(string(pk, base=16), 64, "0")
@@ -480,11 +508,22 @@ function scan_dashboard(
         BtcUtils.save_found_key(puzzle_id, addr, pub_hex, pk_hex, wif)
         puzzle_id > 0 && CheckpointManager.delete_checkpoint(puzzle_id)
     else
-        print("\033[8A\r\033[J") 
+        print("\033[11A\r\033[J") 
         render_stats(speed, total_elapsed)
-        println(box_top(" SESSÃO CONCLUÍDA "))
-        println(box_line(" Chave não encontrada no intervalo. "))
-        println(box_bot())
+        if interrupted[]
+            println(box_top(" SESSÃO INTERROMPIDA "))
+            println(box_line(" Busca pausada — progresso salvo no checkpoint. "))
+            if CFG.use_checkpoint && puzzle_id > 0 && mode != 3
+                try
+                    CheckpointManager.save_checkpoint(puzzle_id, last_key[], final, mode, total_elapsed)
+                catch; end
+            end
+            println(box_bot())
+        else
+            println(box_top(" SESSÃO CONCLUÍDA "))
+            println(box_line(" Chave não encontrada no intervalo. "))
+            println(box_bot())
+        end
     end
 
     show_cursor()

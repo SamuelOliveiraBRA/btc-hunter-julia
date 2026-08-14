@@ -4,7 +4,7 @@ using Printf
 using ..ConfigModule: CFG
 
 export G, R, B, Y, M, C, W, DIM, X, BOLD, UL
-export clear, goto, hide_cursor, show_cursor, input, fmt_num, fmt_time, progress_bar, range_map
+export clear, goto, hide_cursor, show_cursor, input, fmt_num, fmt_time, progress_bar, range_map, position_map
 export box_line, box_top, box_sep, box_bot, box_split, header, splash, print_found_key
 
 # ── Cores ANSI ────────────────────────────────────────────
@@ -68,6 +68,19 @@ function range_map(p_start::Float64, p_end::Float64, width::Int=46)
         end
     end
     return "[ " * bar * " ]"
+end
+
+function position_map(pos::Float64, width::Int=34)
+    idx = clamp(round(Int, pos * (width - 1)), 0, width - 1) + 1
+    bar = ""
+    for i in 1:width
+        if i == idx
+            bar *= C * "◉" * X
+        else
+            bar *= DIM * "░" * X
+        end
+    end
+    return "[" * bar * "]"
 end
 
 # ── Box helpers ───────────────────────────────────────────

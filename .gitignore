@@ -20,6 +20,9 @@ config/settings.json
 # Ignorar arquivos de checkpoint (dados de sessão)
 data/checkpoint.json
 
+# Ignorar scripts de teste/diagnóstico
+scratch/
+
 # Ignorar logs e arquivos de teste
 *.log
 test_output.txt

@@ -3,6 +3,8 @@
 #  Arquitetura Modular & Performance Otimizada
 # ═══════════════════════════════════════════════════════════
 
+print("\e[32mCarregando o sistema...\e[0m"); flush(stdout)
+
 # ── Carregamento de módulos ───────────────────────────────
 include("src/Config.jl")
 using .ConfigModule
@@ -48,6 +50,8 @@ using .ScannerOrchestrator
 
 
 using Dates, Printf, Random, JSON
+
+println(" \e[32mOK.\e[0m"); flush(stdout)
 
 # ── Utilitários Adicionais ───────────────────────────────
 hex2big(s) = parse(BigInt, replace(strip(s), "0x" => "", "0X" => ""), base=16)
@@ -594,7 +598,11 @@ function pre_scan_menu()
     println("\n  $(W)Mapa Visual de Range:$(X)")
     println("  " * UIModule.range_map(p_start, p_end))
     println(UIModule.DIM, @sprintf("  Início: %.4f%%  │  Fim: %.4f%%", p_start*100, p_end*100), UIModule.X)
-    
+    println(UIModule.C, "  Hex:  0x", string(start_k, base=16), "  →  0x", string(end_k, base=16),
+            UIModule.X, UIModule.DIM, "  (", UIModule.fmt_num(end_k - start_k + 1), " chaves)", UIModule.X)
+    println(UIModule.DIM, "        (intervalo exato dentro do puzzle: 0x", string(r_min, base=16),
+            " … 0x", string(r_max, base=16), ")", UIModule.X)
+
     confirm = UIModule.input("\n  $(G)Deseja iniciar a busca?$(X) [Enter/0]: ")
     confirm == "0" && return
 
@@ -686,6 +694,7 @@ end
 
 # ── Start ─────────────────────────────────────────────────
 function main()
+    Base.exit_on_sigint(false)   # Ctrl+C vira InterruptException em vez de crash
     mkpath("outputs")
     
     # Salva preferência do usuário, mas reseta hardware state antes de detectar
@@ -724,27 +733,28 @@ function main()
         @warn "Erro na detecção de GPU: $e"
     end
 
-    # --- AUTO-RELAUNCH NITRO ---
-    # Se Julia iniciou com menos threads que o configurado no JSON, reinicia com o valor correto.
+    # --- AVISO DE THREADS (sem auto-relaunch: evita processos pai/filho no terminal) ---
     active_threads = Threads.nthreads()
-    if active_threads < CFG.cpus && !haskey(ENV, "BTC_RELAUNCHED")
-        julia_bin = joinpath(Sys.BINDIR, "julia")
-        if !isfile(julia_bin); julia_bin = "julia"; end
-        
-        # Define flag para evitar loop infinito
-        ENV["BTC_RELAUNCHED"] = "1"
-        
-        # Relança o processo com os threads corretos PRESERVANDO os argumentos
-        cmd = Cmd([julia_bin, "-t", string(CFG.cpus), "main.jl", ARGS...])
-        run(cmd)
-        exit(0)
+    if active_threads < CFG.cpus
+        println("  $(R)⚠  Julia rodando com $(active_threads) thread(s), mas CPUs configuradas = $(CFG.cpus)$(X)")
+        println("  $(DIM)   Para máxima performance, reinicie com:  julia -t $(CFG.cpus) --project=. main.jl$(X)")
+        println("  $(DIM)   (ou use o launcher:  bash btc.sh)$(X)\n")
+        sleep(1.5)
     end
 
     # Tenta processar argumentos de linha de comando primeiro
     parse_cli_args()
 
     # splash()  # Removido para evitar duplicidade, já que header() faz o trabalho
-    main_menu()
+    while true
+        try
+            main_menu()
+        catch e
+            e isa InterruptException || rethrow()
+            show_cursor()
+            println("\n  (Ctrl+C) Voltando ao menu...")
+        end
+    end
 end
 
 main()

@@ -177,9 +177,9 @@ end
     r4, cb = add_carry_native(r4, h4, cb)
 
     ov = h5 + UInt64(cb)
-    rem_final = ov * K
-    r1, cb1 = Base.add_with_overflow(r1, rem_final)
-    r2, cb2 = add_carry_native(r2, UInt64(0), UInt64(cb1))
+    rem_full = UInt128(ov) * K
+    r1, cb1 = Base.add_with_overflow(r1, UInt64(rem_full & 0xffffffffffffffff))
+    r2, cb2 = add_carry_native(r2, UInt64(rem_full >> 64), UInt64(cb1))
     r3, cb3 = add_carry_native(r3, UInt64(0), UInt64(cb2))
     r4, cb4 = add_carry_native(r4, UInt64(0), UInt64(cb3))
 
